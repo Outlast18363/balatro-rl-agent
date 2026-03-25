@@ -16,7 +16,7 @@ from stable_baselines3.common.monitor import Monitor
 # Import your Balatro environment
 import sys
 sys.path.append(os.path.expanduser('~/balatro_rl_project'))
-from balatro_gym.envs.balatro_env_2 import BalatroEnv
+from balatro_gym.balatro_env_2 import BalatroEnv
 
 
 def make_env(rank: int, seed: int = 0):

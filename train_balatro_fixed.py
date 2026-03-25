@@ -14,7 +14,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
 
-from balatro_gym.envs.balatro_env_2 import BalatroEnv as OriginalBalatroEnv
+from balatro_gym.balatro_env_2 import BalatroEnv as OriginalBalatroEnv
 
 
 class BalatroEnvFixed(gym.Env):
