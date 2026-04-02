@@ -206,6 +206,7 @@ class UnifiedGameState:
     card_states: Dict[int, CardState] = field(default_factory=dict)
     
     # Boss blind state
+    next_boss_blind: Optional[BossBlindType] = None  # pre-selected for current ante
     active_boss_blind: Optional[BossBlindType] = None
     boss_blind_active: bool = False
     face_down_cards: List[int] = field(default_factory=list)
@@ -261,6 +262,7 @@ class UnifiedGameState:
             jokers_sold=self.jokers_sold,
             hand_levels=self.hand_levels.copy(),
             card_states=self.card_states.copy(),
+            next_boss_blind=self.next_boss_blind,
             active_boss_blind=self.active_boss_blind,
             boss_blind_active=self.boss_blind_active,
             face_down_cards=self.face_down_cards.copy(),
@@ -547,6 +549,9 @@ class BalatroEnv(gym.Env):
             except (KeyError, ValueError):
                 # Skip hand types that don't have levels
                 continue
+
+        # Pre-select boss blind for ante 1
+        self.state.next_boss_blind = select_boss_blind(self.state.ante)
 
         # Sync state with game
         self._sync_state_from_game()
@@ -1213,6 +1218,15 @@ class BalatroEnv(gym.Env):
                 return self._get_observation(), sell_value / 5.0, False, False, {'sold_joker': sold_joker.name}
             else:
                 return self._get_observation(), -1.0, False, False, {'error': 'Invalid joker index'}
+        elif Action.SELL_CONSUMABLE_BASE <= action < Action.SELL_CONSUMABLE_BASE + Action.SELL_CONSUMABLE_COUNT:
+            idx = action - Action.SELL_CONSUMABLE_BASE
+            if 0 <= idx < len(self.state.consumables):
+                sold = self.state.consumables.pop(idx)
+                self.state.money += 3  # standard consumable sell value
+                self._sync_player_state()
+                return self._get_observation(), 0.6, False, False, {'sold_consumable': sold}
+            else:
+                return self._get_observation(), -1.0, False, False, {'error': 'Invalid consumable index'}
         else:
             return self._get_observation(), -1.0, False, False, {'error': 'Invalid shop action'}
         
@@ -1243,12 +1257,9 @@ class BalatroEnv(gym.Env):
         # Sync money
         self.state.money = self.shop.player.chips
         
-        # Check if shopping is done
+        # Check if shopping is done — transition to blind selection, not play
         if done_shopping:
-            self.state.phase = Phase.PLAY
-            self._sync_state_to_game()
-            self.game._draw_cards()
-            self._sync_state_from_game()
+            self.state.phase = Phase.BLIND_SELECT
         
         return self._get_observation(), reward, False, False, info
 
@@ -1267,8 +1278,8 @@ class BalatroEnv(gym.Env):
             
             # Handle boss blind activation
             if blind_type == 2:  # Boss blind
-                # Select and activate boss blind
-                boss_type = select_boss_blind(self.state.ante)
+                # Use pre-selected boss blind (falls back to random if missing)
+                boss_type = self.state.next_boss_blind or select_boss_blind(self.state.ante)
                 effects = self.boss_blind_manager.activate_boss_blind(boss_type, self.state.to_dict())
                 
                 # Apply chip multiplier
@@ -1361,6 +1372,8 @@ class BalatroEnv(gym.Env):
         if self.state.round == 3:
             self.state.ante += 1
             self.state.round = 1
+            # Pre-select the boss blind for the new ante
+            self.state.next_boss_blind = select_boss_blind(self.state.ante)
             
             # Add termination check
             if self.state.ante > 100:
@@ -1461,6 +1474,10 @@ class BalatroEnv(gym.Env):
             # Sell jokers
             for i in range(len(self.state.jokers)):
                 mask[Action.SELL_JOKER_BASE + i] = 1
+            
+            # Sell consumables
+            for i in range(len(self.state.consumables)):
+                mask[Action.SELL_CONSUMABLE_BASE + i] = 1
                 
         elif self.state.phase == Phase.BLIND_SELECT:
             # Select any blind
