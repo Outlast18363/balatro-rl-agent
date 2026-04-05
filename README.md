@@ -99,6 +99,9 @@ Supported methods and helpers:
 - `load_state(saved_state)`
   Restores a previously saved environment state.
 
+- `inject_save_into_balatro_env(save_source, env=None, seed=0, parser=None, validate=True)`
+  Injects an external Balatro save into `BalatroEnv`, applying only fields that the current gym state supports. `save_source` supports parsed dict, `.json`, and `.jkr` (default binary save format; raw-deflate Lua table). Returns `(env, report)` with `applied_fields`, `missing_in_save`, and `ignored_from_save`.
+
 - `make_balatro_env(**kwargs)`
   Small factory helper returning a thunk that constructs `BalatroEnv`.
 
@@ -435,6 +438,40 @@ while not done:
     action = int(valid_actions[0])
     obs, reward, terminated, truncated, info = env.step(action)
     done = terminated or truncated
+```
+
+Inject save data into `BalatroEnv`:
+
+```python
+import json
+from pathlib import Path
+
+from balatro_gym.save_injection import inject_save_into_balatro_env
+from cs590_env.wrapper import BalatroPhaseWrapper
+
+# Case 1: default .jkr input (recommended)
+env, report = inject_save_into_balatro_env("first_blind_combat_save.jkr", seed=0, validate=True)
+
+# Case 2: already parsed dict
+save_blob = json.loads(Path("first_blind_combat_save.json").read_text())
+env, report = inject_save_into_balatro_env(save_blob, seed=0)
+
+# Case 2: provide parser hook (e.g. caller-side jkr -> dict parser)
+def parse_jkr_to_dict(raw_payload) -> dict:
+    # implement outside this repo or wire your existing parser here
+    return raw_payload
+
+env, report = inject_save_into_balatro_env(
+    save_source=save_blob, parser=parse_jkr_to_dict, seed=0
+)
+
+print("missing gym fields:", report["missing_in_save"])
+print("applied fields:", report["applied_fields"])
+
+# Wrapper compatibility: inject into raw env first, then wrap.
+# Avoid calling wrapper.reset() if you need to keep injected state.
+wrapped_env = BalatroPhaseWrapper(env)
+wrapped_obs = wrapped_env._get_phase_observation()
 ```
 
 Practical training entrypoints to look at first:
