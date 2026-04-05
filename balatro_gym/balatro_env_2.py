@@ -17,6 +17,7 @@ import numpy as np
 from typing import Dict, Optional, List, Any, Tuple
 from enum import Enum
 from dataclasses import dataclass, field
+from copy import deepcopy
 import random
 import pickle
 import numpy as np
@@ -37,7 +38,7 @@ from balatro_gym.constants import Phase, Action
 # Import all game modules
 from balatro_gym.balatro_game import BalatroGame
 from balatro_gym.scoring_engine import ScoreEngine, HandType
-from balatro_gym.shop import Shop, ShopAction, PlayerState, ItemType
+from balatro_gym.shop import Shop, ShopAction, PlayerState, ItemType, ShopItem
 from balatro_gym.jokers import JokerInfo, JOKER_LIBRARY
 from balatro_gym.planets import Planet
 from balatro_gym.consumables import (
@@ -235,6 +236,15 @@ class UnifiedGameState:
     
     def copy(self) -> 'UnifiedGameState':
         """Create a deep copy of the state"""
+        copied_card_states = {
+            idx: CardState(
+                card_id=state.card_id,
+                enhancement=state.enhancement,
+                edition=state.edition,
+                seal=state.seal,
+            )
+            for idx, state in self.card_states.items()
+        }
         return UnifiedGameState(
             ante=self.ante,
             round=self.round,
@@ -261,7 +271,7 @@ class UnifiedGameState:
             best_hand_this_ante=self.best_hand_this_ante,
             jokers_sold=self.jokers_sold,
             hand_levels=self.hand_levels.copy(),
-            card_states=self.card_states.copy(),
+            card_states=copied_card_states,
             next_boss_blind=self.next_boss_blind,
             active_boss_blind=self.active_boss_blind,
             boss_blind_active=self.boss_blind_active,
@@ -1591,22 +1601,44 @@ class BalatroEnv(gym.Env):
 
     def save_state(self) -> Dict[str, Any]:
         """Save complete environment state for checkpointing"""
+        engine_modifiers = []
+        if hasattr(self.engine, 'modifiers'):
+            # Modifiers may include callables; keep a best-effort snapshot.
+            try:
+                engine_modifiers = deepcopy(self.engine.modifiers)
+            except Exception:
+                engine_modifiers = list(self.engine.modifiers)
+
+        shop_state = self._serialize_shop_state()
         return {
             'state': self.state.copy(),
             'rng_state': self.rng.get_state(),
             'engine_state': {
                 'hand_levels': self.engine.hand_levels.copy(),
                 'hand_play_counts': self.engine.hand_play_counts.copy(),
+                'modifiers': engine_modifiers,
             },
             'game_state': {
                 'deck': self.game.deck.copy(),
                 'state': self.game.state,
                 'blind_index': self.game.blind_index,
+                'hand_indexes': self.game.hand_indexes.copy(),
+                'highlighted_indexes': self.game.highlighted_indexes.copy(),
+                'round_hands': self.game.round_hands,
+                'round_discards': self.game.round_discards,
+                'round_score': self.game.round_score,
+                'hand_size': self.game.hand_size,
+                'discards': self.game.discards,
+                'blinds': self.game.blinds.copy(),
             },
             'boss_blind_state': {
                 'active_blind': self.boss_blind_manager.active_blind,
-                'blind_state': self.boss_blind_manager.blind_state.copy() if self.boss_blind_manager.blind_state else {}
-            }
+                'blind_state': deepcopy(self.boss_blind_manager.blind_state) if self.boss_blind_manager.blind_state else {}
+            },
+            'joker_effects_state': {
+                'joker_states': deepcopy(self.joker_effects_engine.joker_states)
+            },
+            'shop_state': shop_state,
         }
     
     def load_state(self, saved_state: Dict[str, Any]) -> None:
@@ -1617,19 +1649,104 @@ class BalatroEnv(gym.Env):
         # Restore engine state
         self.engine.hand_levels = saved_state['engine_state']['hand_levels'].copy()
         self.engine.hand_play_counts = saved_state['engine_state']['hand_play_counts'].copy()
+        if 'modifiers' in saved_state['engine_state']:
+            try:
+                self.engine.modifiers = deepcopy(saved_state['engine_state']['modifiers'])
+            except Exception:
+                self.engine.modifiers = list(saved_state['engine_state']['modifiers'])
         
         # Restore game state
         self.game.deck = saved_state['game_state']['deck'].copy()
         self.game.state = saved_state['game_state']['state']
         self.game.blind_index = saved_state['game_state']['blind_index']
+        self.game.hand_indexes = saved_state['game_state'].get('hand_indexes', self.state.hand_indexes.copy())
+        self.game.highlighted_indexes = saved_state['game_state'].get('highlighted_indexes', [])
+        self.game.round_hands = saved_state['game_state'].get('round_hands', self.state.hands_left)
+        self.game.round_discards = saved_state['game_state'].get('round_discards', self.state.discards_left)
+        self.game.round_score = saved_state['game_state'].get('round_score', self.state.round_chips_scored)
+        self.game.hand_size = saved_state['game_state'].get('hand_size', self.state.hand_size)
+        self.game.discards = saved_state['game_state'].get('discards', self.state.discards_left)
+        self.game.blinds = saved_state['game_state'].get('blinds', self.game.blinds).copy()
         
         # Restore boss blind state
         if 'boss_blind_state' in saved_state:
             self.boss_blind_manager.active_blind = saved_state['boss_blind_state']['active_blind']
-            self.boss_blind_manager.blind_state = saved_state['boss_blind_state']['blind_state'].copy()
+            self.boss_blind_manager.blind_state = deepcopy(saved_state['boss_blind_state']['blind_state'])
         
-        # Sync states
-        self._sync_state_from_game()
+        # Restore joker effect internal state
+        joker_effects_state = saved_state.get('joker_effects_state', {})
+        self.joker_effects_engine.joker_states = deepcopy(joker_effects_state.get('joker_states', {}))
+        
+        # Restore shop state if present
+        self._restore_shop_state(saved_state.get('shop_state'))
+        
+        # Keep state authoritative and sync it forward to game.
+        self._sync_state_to_game()
+        self.game.state = saved_state['game_state']['state']
+        self.game.blind_index = saved_state['game_state']['blind_index']
+        self.game.highlighted_indexes = saved_state['game_state'].get('highlighted_indexes', []).copy()
+        self.game.round_score = saved_state['game_state'].get('round_score', self.state.round_chips_scored)
+        self.game.hand_size = saved_state['game_state'].get('hand_size', self.state.hand_size)
+        self.game.discards = saved_state['game_state'].get('discards', self.state.discards_left)
+        self.game.blinds = saved_state['game_state'].get('blinds', self.game.blinds).copy()
+
+    def _serialize_shop_state(self) -> Optional[Dict[str, Any]]:
+        """Serialize live shop object into a restorable dict."""
+        if self.shop is None:
+            return None
+        return {
+            'ante': self.shop.ante,
+            'reroll_cost': self.shop.reroll_cost,
+            'rng_state': self.shop.rng.getstate(),
+            'player': {
+                'chips': self.shop.player.chips,
+                'vouchers': self.shop.player.vouchers.copy(),
+                'jokers': self.shop.player.jokers.copy(),
+                'deck': self.shop.player.deck.copy(),
+            },
+            'inventory': [
+                {
+                    'item_type': int(item.item_type),
+                    'name': item.name,
+                    'cost': item.cost,
+                    'payload': deepcopy(item.payload),
+                }
+                for item in self.shop.inventory
+            ],
+        }
+
+    def _restore_shop_state(self, shop_state: Optional[Dict[str, Any]]) -> None:
+        """Rebuild shop object from serialized state."""
+        if not shop_state:
+            self.shop = None
+            return
+
+        player_blob = shop_state.get('player', {})
+        player = PlayerState(chips=player_blob.get('chips', self.state.money))
+        player.vouchers = list(player_blob.get('vouchers', []))
+        player.jokers = list(player_blob.get('jokers', []))
+        player.deck = list(player_blob.get('deck', []))
+
+        self.shop = Shop(shop_state.get('ante', self.state.ante), player, seed=0)
+        self.shop.reroll_cost = int(shop_state.get('reroll_cost', self.shop.reroll_cost))
+        rng_state = shop_state.get('rng_state')
+        if rng_state is not None:
+            self.shop.rng.setstate(rng_state)
+
+        inventory_blob = shop_state.get('inventory', [])
+        restored_inventory = []
+        for item in inventory_blob:
+            restored_inventory.append(
+                ShopItem(
+                    item_type=ItemType(item['item_type']),
+                    name=item['name'],
+                    cost=item['cost'],
+                    payload=deepcopy(item.get('payload', {})),
+                )
+            )
+        self.shop.inventory = restored_inventory
+        self.state.shop_inventory = self.shop.inventory.copy()
+        self.state.shop_reroll_cost = int(self.shop.reroll_cost * self.shop._cost_mult())
 
     def render(self):
         """Render the game state"""

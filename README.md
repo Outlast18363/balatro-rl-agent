@@ -94,10 +94,10 @@ Supported methods and helpers:
   Human-readable terminal rendering of the current round, hand, shop, jokers, consumables, and boss blind state.
 
 - `save_state()`
-  Serializes environment state, RNG state, score engine state, game state, and boss blind state.
+  Serializes environment state, RNG state, score engine state, game runtime state, joker/boss runtime state, and shop runtime state for rollback-oriented snapshots.
 
 - `load_state(saved_state)`
-  Restores a previously saved environment state.
+  Restores a previously saved environment snapshot. This is intended for in-session rollback/checkpoint usage.
 
 - `inject_save_into_balatro_env(save_source, env=None, seed=0, parser=None, validate=True)`
   Injects an external Balatro save into `BalatroEnv`, applying only fields that the current gym state supports. `save_source` supports parsed dict, `.json`, and `.jkr` (default binary save format; raw-deflate Lua table). Returns `(env, report)` with `applied_fields`, `missing_in_save`, and `ignored_from_save`.
