@@ -13,6 +13,7 @@ import pytest
 import numpy as np
 
 from balatro_gym.balatro_env_2 import BalatroEnv
+from balatro_gym.constants import Action
 from balatro_gym.jokers import JokerInfo
 
 from cs590_env.schema import (
@@ -135,6 +136,19 @@ class TestCombatMask:
         _enter_combat(env)
         obs, _, _, _, _ = env.step(int(WrapperAction.SELECT_CARD_BASE))
         assert obs['action_mask'][WrapperAction.PLAY_HAND] == 1
+
+    def test_discard_disabled_when_more_than_five_cards_selected(self, env):
+        """DISCARD should be masked off when more than five cards are selected."""
+        env.reset()
+        _enter_combat(env)
+
+        obs = None
+        for i in range(6):
+            obs, _, _, _, _ = env.step(int(WrapperAction.SELECT_CARD_BASE + i))
+
+        assert obs is not None
+        assert obs['action_mask'][WrapperAction.PLAY_HAND] == 0
+        assert obs['action_mask'][WrapperAction.DISCARD] == 0
 
     def test_shop_actions_masked(self, env):
         """SHOP_END, SHOP_REROLL, SHOP_BUY should be disabled in combat."""
@@ -280,6 +294,32 @@ class TestInvalidActions:
         obs, reward, _, _, info = env.step(int(WrapperAction.SHOP_END))
         assert reward == -1.0
         assert 'error' in info
+
+    def test_discard_with_six_selected_cards_invalid(self, env):
+        """Discarding six selected cards should be rejected by wrapper and base env."""
+        env.reset()
+        _enter_combat(env)
+
+        for i in range(6):
+            env.step(int(WrapperAction.SELECT_CARD_BASE + i))
+
+        _, wrapper_reward, wrapper_terminated, wrapper_truncated, wrapper_info = env.step(
+            int(WrapperAction.DISCARD)
+        )
+        assert wrapper_reward == -1.0
+        assert 'error' in wrapper_info
+        assert not wrapper_terminated
+        assert not wrapper_truncated
+
+        selected_before = list(env.env.state.selected_cards)
+        discards_before = env.env.state.discards_left
+        _, base_reward, base_terminated, base_truncated, base_info = env.env.step(int(Action.DISCARD))
+        assert base_reward == -1.0
+        assert base_info['error'] == 'Invalid action'
+        assert not base_terminated
+        assert not base_truncated
+        assert env.env.state.selected_cards == selected_before
+        assert env.env.state.discards_left == discards_before
 
 
 # ─── Full phase cycle ─────────────────────────────────────────────────────────

@@ -977,6 +977,10 @@ class BalatroEnv(gym.Env):
         elif action == Action.DISCARD:
             if self.state.discards_left <= 0:
                 return self._get_observation(), -1.0, False, False, {'error': 'No discards left'}
+            if not 1 <= len(self.state.selected_cards) <= 5:
+                return self._get_observation(), -1.0, False, False, {
+                    'error': 'Discard requires selecting between 1 and 5 cards'
+                }
             
             # Get discarded cards
             discarded = []
@@ -1455,12 +1459,14 @@ class BalatroEnv(gym.Env):
             for i in range(min(8, len(self.state.hand_indexes))):
                 mask[Action.SELECT_CARD_BASE + i] = 1
             
-            # Play hand if cards selected
-            if len(self.state.selected_cards) > 0:
+            selected_count = len(self.state.selected_cards)
+
+            # Play/discard only when the current hand selection is actually playable.
+            if 1 <= selected_count <= 5:
                 mask[Action.PLAY_HAND] = 1
             
             # Discard if cards selected and discards left
-            if len(self.state.selected_cards) > 0 and self.state.discards_left > 0:
+            if 1 <= selected_count <= 5 and self.state.discards_left > 0:
                 mask[Action.DISCARD] = 1
             
             # Use consumables
@@ -1490,10 +1496,11 @@ class BalatroEnv(gym.Env):
                 mask[Action.SELL_CONSUMABLE_BASE + i] = 1
                 
         elif self.state.phase == Phase.BLIND_SELECT:
-            # Select any blind
-            for i in range(Action.SELECT_BLIND_COUNT):
-                mask[Action.SELECT_BLIND_BASE + i] = 1
-            mask[Action.SKIP_BLIND] = 1
+            blind_idx = self.state.round - 1
+            if 0 <= blind_idx < Action.SELECT_BLIND_COUNT:
+                mask[Action.SELECT_BLIND_BASE + blind_idx] = 1
+            if self.state.round < 3:
+                mask[Action.SKIP_BLIND] = 1
         
         return mask
 

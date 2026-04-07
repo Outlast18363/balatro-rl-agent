@@ -434,7 +434,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
             n_sel = len(s.selected_cards)
             if 1 <= n_sel <= 5:
                 mask[WrapperAction.PLAY_HAND] = 1
-            if n_sel > 0 and s.discards_left > 0:
+            if 1 <= n_sel <= 5 and s.discards_left > 0:
                 mask[WrapperAction.DISCARD] = 1
 
         elif phase == GamePhase.SHOP:
