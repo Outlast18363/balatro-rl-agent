@@ -14,6 +14,7 @@ from gymnasium import spaces
 # ─── Slot / padding constants ─────────────────────────────────────────────────
 
 ACTION_SPACE_SIZE = 60
+MAX_DECK_SIZE = 52            # shared deck-histogram upper bound
 MAX_JOKER_DISPLAY = 10       # padded joker slots in observation
 MAX_CONSUMABLE_DISPLAY = 5   # padded consumable slots in observation
 MAX_HAND_SIZE = 8            # max cards displayed in hand
@@ -126,14 +127,14 @@ def build_observation_space() -> spaces.Dict:
 
         'vouchers_owned':         spaces.MultiBinary(NUM_VOUCHERS),
 
-        # [level, base_chips, base_mult] per hand type
+        # [level, chip, mult] per hand type
         'hand_levels':            spaces.Box(0, 500, (NUM_HAND_TYPES, 3), np.int16),
 
         'action_mask':            spaces.MultiBinary(ACTION_SPACE_SIZE),
 
         # ── Deck histogram (all phases; content varies) ───────
-        'deck_ranks':             spaces.Box(0, 52, (NUM_RANKS,), np.int8),
-        'deck_suits':             spaces.Box(0, 52, (NUM_SUITS,), np.int8),
+        'deck_ranks':             spaces.Box(0, MAX_DECK_SIZE, (NUM_RANKS,), np.int8),
+        'deck_suits':             spaces.Box(0, MAX_DECK_SIZE, (NUM_SUITS,), np.int8),
 
         # ── Transition (BLIND_SELECT) fields ──────────────────
         'blind_type':             spaces.Box(0, 3, (), np.int8),

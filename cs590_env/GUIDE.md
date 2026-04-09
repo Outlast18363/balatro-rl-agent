@@ -83,10 +83,12 @@ All keys are present in every step. Phase-irrelevant fields are zeroed. Check `o
 | `consumable_sell_values` | `(5,)` | int8 | 3 (tarot/spectral) or 4 (planet) |
 | `consumable_is_empty` | `(5,)` | int8 | 1 = slot empty |
 | `vouchers_owned` | `(16,)` | int8 | Binary flags (placeholder, all 0) |
-| `hand_levels` | `(12,3)` | int16 | `[level, base_chips, base_mult]` per hand type |
+| `hand_levels` | `(12,3)` | int16 | `[level, chip, mult]` per hand type |
 | `action_mask` | `(60,)` | int8 | 1 = action legal this step |
 | `deck_ranks` | `(13,)` | int8 | Cards per rank (idx 0=Two .. 12=Ace) |
 | `deck_suits` | `(4,)` | int8 | Cards per suit (0=♣, 1=♦, 2=♥, 3=♠) |
+
+For `hand_levels`, `chip` and `mult` are the level-scaled hand values returned by the env scoring engine for each hand type. They are not the final scored value after card effects, jokers, or boss modifiers.
 
 ### Transition Phase Fields
 
@@ -96,7 +98,7 @@ All keys are present in every step. Phase-irrelevant fields are zeroed. Check `o
 | `target_score` | `()` | int32 | Chips required to beat this blind |
 | `blind_reward` | `()` | int32 | Estimated money for beating this blind |
 
-Deck histograms count the **current full deck state**. Early in a run this is usually 52 cards, but it can change if cards are added or removed.
+Deck histograms count the **current full deck state**. Early in a run this is usually `MAX_DECK_SIZE` cards (`52` in the current schema), but it can change if cards are added or removed. The histogram space in the wrapper schema is bounded by `MAX_DECK_SIZE`.
 
 ### Combat Phase Fields
 

@@ -17,7 +17,7 @@ from balatro_gym.constants import Action
 from balatro_gym.jokers import JokerInfo
 
 from cs590_env.schema import (
-    WrapperAction, GamePhase, ACTION_SPACE_SIZE,
+    WrapperAction, GamePhase, ACTION_SPACE_SIZE, MAX_DECK_SIZE,
     SWAP_JOKER_COUNT, SELL_JOKER_COUNT, SELL_CONSUMABLE_COUNT,
 )
 from cs590_env.wrapper import BalatroPhaseWrapper
@@ -377,7 +377,7 @@ class TestFullCycle:
         total_ranks = int(obs['deck_ranks'].sum())
         total_suits = int(obs['deck_suits'].sum())
         assert total_ranks == total_suits  # both count same cards
-        assert total_ranks == 52           # standard deck
+        assert total_ranks == MAX_DECK_SIZE
 
     def test_combat_deck_excludes_hand(self, env):
         """In combat, deck histogram should exclude cards in hand."""
@@ -385,4 +385,4 @@ class TestFullCycle:
         obs = _enter_combat(env)
         deck_size = int(obs['deck_ranks'].sum())
         hand_size = int(obs['hand_size'])
-        assert deck_size + hand_size == 52
+        assert deck_size + hand_size == MAX_DECK_SIZE

@@ -15,7 +15,7 @@ import gymnasium as gym
 
 from balatro_gym.balatro_env_2 import BalatroEnv, get_blind_chips
 from balatro_gym.constants import Phase, Action
-from balatro_gym.scoring_engine import HandType, BASE_HAND_VALUES
+from balatro_gym.scoring_engine import HandType
 
 from cs590_env.schema import (
     WrapperAction, GamePhase,
@@ -177,13 +177,13 @@ class BalatroPhaseWrapper(gym.Wrapper):
             cons_sell[i] = consumable_sell_value(name)
             cons_empty[i] = 0
 
-        # Hand levels: [level, base_chips, base_mult] per HandType
+        # Hand levels: [level, chip, mult] per HandType at the current engine level
         hand_levels = np.zeros((NUM_HAND_TYPES, 3), dtype=np.int16)
         for ht in HandType:
             if ht.value < NUM_HAND_TYPES:
-                level = s.hand_levels.get(ht, 0)
-                base_c, base_m = BASE_HAND_VALUES.get(ht, (0, 0))
-                hand_levels[ht.value] = [level, base_c, base_m]
+                level = self.env.engine.get_hand_level(ht)
+                chip, mult = self.env.engine.get_hand_chips_mult(ht)
+                hand_levels[ht.value] = [level, chip, mult]
 
         boss_id = s.next_boss_blind.value if s.next_boss_blind else 0
 
