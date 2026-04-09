@@ -127,8 +127,8 @@ def build_observation_space() -> spaces.Dict:
 
         'vouchers_owned':         spaces.MultiBinary(NUM_VOUCHERS),
 
-        # [level, chip, mult] per hand type
-        'hand_levels':            spaces.Box(0, 500, (NUM_HAND_TYPES, 3), np.int16),
+        # [id, level, chip, mult] per hand type
+        'hand_levels':            spaces.Box(0, 500, (NUM_HAND_TYPES, 4), np.int16),
 
         'action_mask':            spaces.MultiBinary(ACTION_SPACE_SIZE),
 

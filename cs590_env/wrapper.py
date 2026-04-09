@@ -177,13 +177,13 @@ class BalatroPhaseWrapper(gym.Wrapper):
             cons_sell[i] = consumable_sell_value(name)
             cons_empty[i] = 0
 
-        # Hand levels: [level, chip, mult] per HandType at the current engine level
-        hand_levels = np.zeros((NUM_HAND_TYPES, 3), dtype=np.int16)
+        # Hand levels: [id, level, chip, mult] per HandType at the current engine level
+        hand_levels = np.zeros((NUM_HAND_TYPES, 4), dtype=np.int16)
         for ht in HandType:
             if ht.value < NUM_HAND_TYPES:
                 level = self.env.engine.get_hand_level(ht)
                 chip, mult = self.env.engine.get_hand_chips_mult(ht)
-                hand_levels[ht.value] = [level, chip, mult]
+                hand_levels[ht.value] = [ht.value, level, chip, mult]
 
         boss_id = s.next_boss_blind.value if s.next_boss_blind else 0
 

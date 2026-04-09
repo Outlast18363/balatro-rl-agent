@@ -83,12 +83,12 @@ All keys are present in every step. Phase-irrelevant fields are zeroed. Check `o
 | `consumable_sell_values` | `(5,)` | int8 | 3 (tarot/spectral) or 4 (planet) |
 | `consumable_is_empty` | `(5,)` | int8 | 1 = slot empty |
 | `vouchers_owned` | `(16,)` | int8 | Binary flags (placeholder, all 0) |
-| `hand_levels` | `(12,3)` | int16 | `[level, chip, mult]` per hand type |
+| `hand_levels` | `(12,4)` | int16 | `[id, level, chip, mult]` per hand type |
 | `action_mask` | `(60,)` | int8 | 1 = action legal this step |
 | `deck_ranks` | `(13,)` | int8 | Cards per rank (idx 0=Two .. 12=Ace) |
 | `deck_suits` | `(4,)` | int8 | Cards per suit (0=♣, 1=♦, 2=♥, 3=♠) |
 
-For `hand_levels`, `chip` and `mult` are the level-scaled hand values returned by the env scoring engine for each hand type. They are not the final scored value after card effects, jokers, or boss modifiers.
+For `hand_levels`, `id` is the `HandType` enum ID for that row, while `chip` and `mult` are the level-scaled hand values returned by the env scoring engine for that hand type. They are not the final scored value after card effects, jokers, or boss modifiers.
 
 ### Transition Phase Fields
 
