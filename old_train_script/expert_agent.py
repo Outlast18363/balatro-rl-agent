@@ -1,10 +1,11 @@
 # expert_agent.py
 
 import numpy as np
-from typing import List, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 from balatro_gym.balatro_env_2 import BalatroEnv, Phase, Action
 from balatro_gym.cards import Card, Suit, Rank
+from balatro_gym.constants import get_select_card_action
 from balatro_gym.scoring_engine import HandType
 
 class BalatroExpertAgent:
@@ -53,7 +54,7 @@ class BalatroExpertAgent:
             
             # Select first card of best hand
             if best_play.card_indices:
-                return Action.SELECT_CARD_BASE + best_play.card_indices[0], info
+                return get_select_card_action(best_play.card_indices[0]), info
         
         # Cards selected - decide whether to play
         else:
@@ -69,7 +70,7 @@ class BalatroExpertAgent:
             # Look for cards to add
             next_card = self._find_improving_card(env.state.selected_cards, obs, env)
             if next_card is not None:
-                return Action.SELECT_CARD_BASE + next_card, info
+                return get_select_card_action(next_card), info
             
             # Can't improve, play what we have
             return Action.PLAY_HAND, info

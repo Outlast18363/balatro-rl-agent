@@ -4,6 +4,7 @@ from typing import List, Tuple, Any, Optional
 from enum import IntEnum
 from .scoring_engine import HandType
 from .cards import Card, Rank, Suit
+from .constants import MAX_HAND_SIZE
 
 class GameState(IntEnum):
     PLAYING = 0
@@ -21,7 +22,7 @@ class BalatroGame:
         self.round_hands = 4
         self.round_discards = 3
         self.round_score = 0
-        self.hand_size = 8
+        self.hand_size = MAX_HAND_SIZE
         self.discards = 3
         self.state = GameState.PLAYING
         self.blinds = [300, 450, 600]  # Small, big, boss

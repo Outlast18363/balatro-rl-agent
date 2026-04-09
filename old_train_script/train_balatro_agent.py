@@ -32,6 +32,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim
 
 from balatro_gym.balatro_env_2 import BalatroEnv, make_balatro_env, Phase
+from balatro_gym.constants import MAX_HAND_SIZE
 import wandb
 
 
@@ -46,7 +47,7 @@ class BalatroFeaturesExtractor(BaseFeaturesExtractor):
         super().__init__(observation_space, features_dim)
         
         # Calculate input dimensions for each component
-        hand_dim = 8 * 52  # One-hot encoded cards
+        hand_dim = MAX_HAND_SIZE * 52  # One-hot encoded cards
         joker_dim = 10 * 16  # Joker embeddings
         game_state_dim = 32  # All scalar features
         
@@ -85,9 +86,9 @@ class BalatroFeaturesExtractor(BaseFeaturesExtractor):
         # Process hand (convert to one-hot)
         hand = observations['hand'].long()
         batch_size = hand.shape[0]
-        hand_one_hot = torch.zeros(batch_size, 8, 52, device=hand.device)
+        hand_one_hot = torch.zeros(batch_size, MAX_HAND_SIZE, 52, device=hand.device)
         
-        for i in range(8):
+        for i in range(MAX_HAND_SIZE):
             valid_cards = hand[:, i] >= 0
             if valid_cards.any():
                 hand_one_hot[valid_cards, i, hand[valid_cards, i]] = 1

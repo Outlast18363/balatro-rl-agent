@@ -12,14 +12,19 @@ classes. Import these enums everywhere instead of raw numbers to gain:
 Usage (env excerpt)
 -------------------
 ```python
-from balatro_gym.constants import Action, Phase
+from balatro_gym.constants import (
+    Action,
+    Phase,
+    get_select_card_slot,
+)
 
 if Phase(self.state.phase) is Phase.PLAY:
     if Action(action) is Action.PLAY_HAND:
         ...
-    elif Action.SELECT_CARD_BASE <= action < Action.SELECT_CARD_BASE + Action.SELECT_CARD_COUNT:
-        card_idx = action - Action.SELECT_CARD_BASE
-        ...
+    else:
+        card_idx = get_select_card_slot(action)
+        if card_idx is not None:
+            ...
 ```
 
 Tip: wrap the integer `action` into `Action(action)` once at the top of
@@ -28,6 +33,9 @@ Tip: wrap the integer `action` into `Action(action)` once at the top of
 
 from __future__ import annotations
 from enum import IntEnum, unique
+
+
+MAX_HAND_SIZE = 10
 
 
 @unique
@@ -41,18 +49,20 @@ class Phase(IntEnum):
 
 @unique
 class Action(IntEnum):
-    """Flat action space (0‑59) with *base* offsets for parameterised actions.
-    
-    For ranges (e.g. *select card 0‑7*) we expose both **BASE** and **COUNT**
-    constants so you can compute the concrete integer or reverse‑map from it.
+    """Flat action space (0‑59) with base offsets for action families.
+
+    Most parameterised action groups still occupy contiguous ranges. Select-card
+    actions are the exception: slots 0-7 use historical IDs 2-9, while slots
+    8-9 use spare IDs 56-57 so later action families keep their existing values.
     """
     # === Play‑phase basics ===
     PLAY_HAND: int = 0
     DISCARD: int = 1
     
-    # --- Card selection (8 options) ---
+    # --- Card selection ---
     SELECT_CARD_BASE: int = 2
-    # SELECT_CARD_COUNT = 8  # → 2‑9
+    SELECT_CARD_SLOT_8: int = 56
+    SELECT_CARD_SLOT_9: int = 57
     
     # --- Consumables (5 slots) ---
     USE_CONSUMABLE_BASE: int = 10
@@ -90,7 +100,7 @@ class Action(IntEnum):
         """Return the concrete *integer* ID for an indexed variant.
         
         Example::
-            Action.SELECT_CARD_BASE.offset(3)  # → 5
+            Action.SHOP_BUY_BASE.offset(3)  # → 23
         """
         return int(self) + index
     
@@ -99,15 +109,57 @@ class Action(IntEnum):
         """Reverse‑map: given a *concrete* action ID, return its **index**.
         
         Example::
-            idx = Action.from_offset(Action.SELECT_CARD_BASE, action_id)
+            idx = Action.from_offset(Action.SHOP_BUY_BASE, action_id)
         """
         return id_ - int(base)
+
+
+SELECT_CARD_ACTION_IDS = (
+    int(Action.SELECT_CARD_BASE),
+    int(Action.SELECT_CARD_BASE) + 1,
+    int(Action.SELECT_CARD_BASE) + 2,
+    int(Action.SELECT_CARD_BASE) + 3,
+    int(Action.SELECT_CARD_BASE) + 4,
+    int(Action.SELECT_CARD_BASE) + 5,
+    int(Action.SELECT_CARD_BASE) + 6,
+    int(Action.SELECT_CARD_BASE) + 7,
+    int(Action.SELECT_CARD_SLOT_8),
+    int(Action.SELECT_CARD_SLOT_9),
+)
+SELECT_CARD_ACTION_TO_SLOT = {
+    action_id: slot for slot, action_id in enumerate(SELECT_CARD_ACTION_IDS)
+}
+
+
+def get_select_card_action(slot: int) -> int:
+    """Return the concrete select-card action ID for a hand slot.
+
+    Args:
+        slot: Zero-based hand slot index in ``[0, MAX_HAND_SIZE)``.
+
+    Returns:
+        The flat discrete action ID that toggles that slot.
+    """
+    return SELECT_CARD_ACTION_IDS[slot]
+
+
+def get_select_card_slot(action_id: int) -> int | None:
+    """Return the hand slot selected by an action ID.
+
+    Args:
+        action_id: Flat discrete action ID from the environment.
+
+    Returns:
+        The zero-based hand slot index if ``action_id`` is a select-card action,
+        otherwise ``None``.
+    """
+    return SELECT_CARD_ACTION_TO_SLOT.get(action_id)
 
 
 # Action count constants - not part of the enum!
 class ActionCounts:
     """Constants defining how many actions of each type exist."""
-    SELECT_CARD_COUNT: int = 8
+    SELECT_CARD_COUNT: int = MAX_HAND_SIZE
     USE_CONSUMABLE_COUNT: int = 5
     SHOP_BUY_COUNT: int = 10
     SELL_JOKER_COUNT: int = 5
@@ -129,6 +181,9 @@ ACTION_SPACE_SIZE = ActionCounts.ACTION_SPACE_SIZE
 
 # Alternatively, if you want to keep them on the Action class but not as enum members:
 Action.SELECT_CARD_COUNT = SELECT_CARD_COUNT
+Action.SELECT_CARD_ACTION_IDS = SELECT_CARD_ACTION_IDS
+Action.SELECT_CARD_ACTION_TO_SLOT = SELECT_CARD_ACTION_TO_SLOT
+Action.MAX_HAND_SIZE = MAX_HAND_SIZE
 Action.USE_CONSUMABLE_COUNT = USE_CONSUMABLE_COUNT
 Action.SHOP_BUY_COUNT = SHOP_BUY_COUNT
 Action.SELL_JOKER_COUNT = SELL_JOKER_COUNT
@@ -141,7 +196,12 @@ Action.ACTION_SPACE_SIZE = ACTION_SPACE_SIZE
 __all__ = [
     "Phase",
     "Action",
+    "MAX_HAND_SIZE",
     "ActionCounts",
+    "SELECT_CARD_ACTION_IDS",
+    "SELECT_CARD_ACTION_TO_SLOT",
+    "get_select_card_action",
+    "get_select_card_slot",
     # Export the constants too for convenience
     "SELECT_CARD_COUNT",
     "USE_CONSUMABLE_COUNT", 

@@ -16,7 +16,7 @@ import zlib
 
 from balatro_gym.balatro_env_2 import BalatroEnv, get_blind_chips
 from balatro_gym.cards import Card, CardState, Edition, Enhancement, Rank, Seal, Suit
-from balatro_gym.constants import Action, Phase
+from balatro_gym.constants import Action, MAX_HAND_SIZE, Phase
 from balatro_gym.scoring_engine import HandType
 from balatro_gym.boss_blinds import BossBlindType, BOSS_BLINDS
 from balatro_gym.jokers import JOKER_LIBRARY
@@ -551,7 +551,7 @@ def _apply_injection(
     hand_size_fallback = _read_int(
         save_blob,
         (("GAME", "starting_params", "hand_size"),),
-        default=8,
+        default=MAX_HAND_SIZE,
         field_name="hand_size(starting_params)",
         report=report,
         consumed_paths=consumed_paths,

@@ -4,7 +4,12 @@
 
 ```python
 from balatro_gym.balatro_env_2 import BalatroEnv
-from cs590_env import BalatroPhaseWrapper, WrapperAction, GamePhase
+from cs590_env import (
+    BalatroPhaseWrapper,
+    GamePhase,
+    WrapperAction,
+    get_wrapper_select_action,
+)
 
 env = BalatroPhaseWrapper(BalatroEnv(seed=42))
 obs, info = env.reset()
@@ -36,7 +41,7 @@ The wrapper keeps the base env's sparse ID layout, so not every integer in `[0, 
 |---------|-------------------------------------|---------------------------|
 | 0 | `PLAY_HAND` | Combat |
 | 1 | `DISCARD` | Combat |
-| 2–9 | `SELECT_CARD_BASE + i` (i=0..7) | Combat |
+| 2–9, 56–57 | `get_wrapper_select_action(i)` for hand slots `i=0..9` | Combat |
 | 10–14 | `USE_CONSUMABLE_BASE + i` (i=0..4) | All phases |
 | 15–18 | `SWAP_JOKER_BASE + i` (swap i↔i+1) | All phases |
 | 20–29 | `SHOP_BUY_BASE + i` (i=0..9) | Shop |
@@ -49,9 +54,9 @@ The wrapper keeps the base env's sparse ID layout, so not every integer in `[0, 
 | 50–54 | `SELECT_FROM_PACK_BASE + i` | Reserved for pack-open; never surfaced |
 | 55 | `SKIP_PACK` | Reserved for pack-open; never surfaced |
 
-Unused / unassigned IDs: `19`, `42–44`, `49`, `56–59`.
+Unused / unassigned IDs: `19`, `42–44`, `49`, `58–59`.
 
-So the action space size is 60, but the wrapper currently names only 51 concrete IDs and only a subset of those are ever valid in any given state. In particular, pack-open actions never become valid because the wrapper auto-skips `PACK_OPEN`.
+So the action space size is 60, but the wrapper currently names 53 concrete IDs and only a subset of those are ever valid in any given state. In particular, pack-open actions never become valid because the wrapper auto-skips `PACK_OPEN`.
 
 Use the enum for readability:
 ```python
@@ -104,13 +109,13 @@ Deck histograms count the **current full deck state**. Early in a run this is us
 
 | Key | Shape | Dtype | Description |
 |--------------------------|-------|-------|-------------|
-| `hand_card_ids` | `(8,)` | int8 | Card ID 0–51 (`(rank-2)*4 + suit`), -1 = empty |
-| `hand_card_enhancements` | `(8,)` | int8 | Enhancement enum (0=none, 1=bonus, ..., 8=lucky) |
-| `hand_card_editions` | `(8,)` | int8 | Edition enum (0=none, 1=foil, 2=holo, 3=poly, 4=neg) |
-| `hand_card_seals` | `(8,)` | int8 | Seal enum (0=none, 1=gold, 2=red, 3=blue, 4=purple) |
-| `hand_is_face_down` | `(8,)` | int8 | 1 = face-down (boss blind effect) |
-| `hand_is_selected` | `(8,)` | int8 | 1 = currently selected for play/discard |
-| `hand_is_debuffed` | `(8,)` | int8 | 1 = debuffed (placeholder, all 0) |
+| `hand_card_ids` | `(10,)` | int8 | Card ID 0–51 (`(rank-2)*4 + suit`), -1 = empty |
+| `hand_card_enhancements` | `(10,)` | int8 | Enhancement enum (0=none, 1=bonus, ..., 8=lucky) |
+| `hand_card_editions` | `(10,)` | int8 | Edition enum (0=none, 1=foil, 2=holo, 3=poly, 4=neg) |
+| `hand_card_seals` | `(10,)` | int8 | Seal enum (0=none, 1=gold, 2=red, 3=blue, 4=purple) |
+| `hand_is_face_down` | `(10,)` | int8 | 1 = face-down (boss blind effect) |
+| `hand_is_selected` | `(10,)` | int8 | 1 = currently selected for play/discard |
+| `hand_is_debuffed` | `(10,)` | int8 | 1 = debuffed (placeholder, all 0) |
 | `current_score` | `()` | int32 | Chips scored so far this round |
 | `target_score` | `()` | int32 | Chips needed to beat the blind |
 | `hand_size` | `()` | int8 | Number of cards currently in hand |
@@ -168,7 +173,7 @@ Additional keys are forwarded from the base env (e.g. `sold_joker`, `boss_blind`
 
 **TRANSITION:** Only `SELECT_BLIND_BASE + (round-1)` is enabled (you must face blinds in order). `SKIP_BLIND` is enabled except for boss (round 3). Sell/swap/use consumable are available if items exist.
 
-**COMBAT:** `SELECT_CARD_BASE + i` for each card in hand. `PLAY_HAND` requires 1–5 cards selected. `DISCARD` requires cards selected and discards > 0. Sell/swap/use consumable available.
+**COMBAT:** `get_wrapper_select_action(i)` is enabled for each visible hand slot `i`. Slots 0–7 use IDs `2–9`, while slots 8–9 use IDs `56–57`. `PLAY_HAND` requires 1–5 cards selected. `DISCARD` requires cards selected and discards > 0. Sell/swap/use consumable remain available.
 
 **SHOP:** `SHOP_BUY_BASE + i` if `money >= cost`. `SHOP_REROLL` if `money >= reroll_cost`. `SHOP_END` always. Sell/swap/use consumable available.
 
@@ -198,8 +203,8 @@ for _ in range(1000):
 
 ```python
 # 1. Select cards (toggle selection — call multiple times for multi-card hands)
-obs, *_ = env.step(int(WrapperAction.SELECT_CARD_BASE + 0))  # select card 0
-obs, *_ = env.step(int(WrapperAction.SELECT_CARD_BASE + 2))  # select card 2
+obs, *_ = env.step(get_wrapper_select_action(0))  # select card 0
+obs, *_ = env.step(get_wrapper_select_action(2))  # select card 2
 
 # 2. Play the selected hand
 obs, reward, terminated, truncated, info = env.step(int(WrapperAction.PLAY_HAND))

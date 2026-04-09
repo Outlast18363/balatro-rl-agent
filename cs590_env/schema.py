@@ -11,13 +11,25 @@ from enum import IntEnum, unique
 import numpy as np
 from gymnasium import spaces
 
+from balatro_gym.constants import (
+    ACTION_SPACE_SIZE,
+    MAX_HAND_SIZE,
+    SELECT_BLIND_COUNT,
+    SELECT_CARD_ACTION_IDS,
+    SELECT_CARD_ACTION_TO_SLOT,
+    SELECT_CARD_COUNT,
+    SELECT_FROM_PACK_COUNT,
+    SELL_CONSUMABLE_COUNT,
+    SELL_JOKER_COUNT,
+    SHOP_BUY_COUNT,
+    USE_CONSUMABLE_COUNT,
+)
+
 # ─── Slot / padding constants ─────────────────────────────────────────────────
 
-ACTION_SPACE_SIZE = 60
 MAX_DECK_SIZE = 52            # shared deck-histogram upper bound
 MAX_JOKER_DISPLAY = 10       # padded joker slots in observation
 MAX_CONSUMABLE_DISPLAY = 5   # padded consumable slots in observation
-MAX_HAND_SIZE = 8            # max cards displayed in hand
 MAX_SHOP_ITEMS = 10          # max shop inventory slots
 NUM_HAND_TYPES = 12          # HandType.HIGH_CARD(0) .. FLUSH_FIVE(11)
 NUM_RANKS = 13               # 2 .. Ace
@@ -37,7 +49,9 @@ class WrapperAction(IntEnum):
     """
     PLAY_HAND            = 0
     DISCARD              = 1
-    SELECT_CARD_BASE     = 2    # 2-9   (8 slots)
+    SELECT_CARD_BASE     = 2    # slots 0-7 use IDs 2-9
+    SELECT_CARD_SLOT_8   = 56   # slot 8
+    SELECT_CARD_SLOT_9   = 57   # slot 9
     USE_CONSUMABLE_BASE  = 10   # 10-14 (5 slots)
     SWAP_JOKER_BASE      = 15   # 15-18 swap slot i ↔ i+1 [wrapper-only]
     SHOP_BUY_BASE        = 20   # 20-29 (10 slots)
@@ -50,16 +64,32 @@ class WrapperAction(IntEnum):
     SELECT_FROM_PACK_BASE = 50  # 50-54 (5 slots)
     SKIP_PACK            = 55
 
-
 # Range counts for each parameterised action group
-SELECT_CARD_COUNT      = 8
-USE_CONSUMABLE_COUNT   = 5
 SWAP_JOKER_COUNT       = 4   # i ∈ {0,1,2,3}
-SHOP_BUY_COUNT         = 10
-SELL_JOKER_COUNT       = 5
-SELL_CONSUMABLE_COUNT  = 5
-SELECT_BLIND_COUNT     = 3
-SELECT_FROM_PACK_COUNT = 5
+
+
+def get_wrapper_select_action(slot: int) -> int:
+    """Return the wrapper action ID for selecting a hand slot.
+
+    Args:
+        slot: Zero-based hand slot index in ``[0, MAX_HAND_SIZE)``.
+
+    Returns:
+        The flat action ID that toggles selection for that slot.
+    """
+    return SELECT_CARD_ACTION_IDS[slot]
+
+
+def get_wrapper_select_slot(action_id: int) -> int | None:
+    """Return the hand slot associated with a wrapper action ID.
+
+    Args:
+        action_id: Flat wrapper action ID.
+
+    Returns:
+        The zero-based hand slot for select-card actions, otherwise ``None``.
+    """
+    return SELECT_CARD_ACTION_TO_SLOT.get(action_id)
 
 
 # ─── GamePhase enum ──────────────────────────────────────────────────────────

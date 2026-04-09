@@ -17,8 +17,15 @@ from balatro_gym.constants import Action
 from balatro_gym.jokers import JokerInfo
 
 from cs590_env.schema import (
-    WrapperAction, GamePhase, ACTION_SPACE_SIZE, MAX_DECK_SIZE,
-    SWAP_JOKER_COUNT, SELL_JOKER_COUNT, SELL_CONSUMABLE_COUNT,
+    ACTION_SPACE_SIZE,
+    GamePhase,
+    MAX_DECK_SIZE,
+    MAX_HAND_SIZE,
+    SELL_CONSUMABLE_COUNT,
+    SELL_JOKER_COUNT,
+    SWAP_JOKER_COUNT,
+    WrapperAction,
+    get_wrapper_select_action,
 )
 from cs590_env.wrapper import BalatroPhaseWrapper
 
@@ -118,11 +125,13 @@ class TestTransitionMask:
 
 class TestCombatMask:
     def test_card_selection_enabled(self, env):
-        """Cards in hand should be selectable in combat."""
+        """Cards in hand should be selectable across the full 10-slot mapping."""
         env.reset()
         obs = _enter_combat(env)
         mask = obs['action_mask']
-        assert mask[WrapperAction.SELECT_CARD_BASE] == 1
+        assert obs['hand_size'] == MAX_HAND_SIZE
+        assert mask[get_wrapper_select_action(0)] == 1
+        assert mask[get_wrapper_select_action(MAX_HAND_SIZE - 1)] == 1
 
     def test_play_hand_disabled_without_selection(self, env):
         """PLAY_HAND should be off when no cards are selected."""
@@ -144,11 +153,42 @@ class TestCombatMask:
 
         obs = None
         for i in range(6):
-            obs, _, _, _, _ = env.step(int(WrapperAction.SELECT_CARD_BASE + i))
+            obs, _, _, _, _ = env.step(get_wrapper_select_action(i))
 
         assert obs is not None
         assert obs['action_mask'][WrapperAction.PLAY_HAND] == 0
         assert obs['action_mask'][WrapperAction.DISCARD] == 0
+
+    def test_extra_select_actions_toggle_ninth_and_tenth_slots(self, env):
+        """The spare action IDs should select combat slots 8 and 9."""
+        env.reset()
+        _enter_combat(env)
+
+        ninth_action = get_wrapper_select_action(8)
+        tenth_action = get_wrapper_select_action(9)
+
+        obs, _, _, _, _ = env.step(ninth_action)
+        assert obs['hand_is_selected'][8] == 1
+
+        obs, _, _, _, _ = env.step(tenth_action)
+        assert obs['hand_is_selected'][9] == 1
+        assert obs['action_mask'][WrapperAction.PLAY_HAND] == 1
+
+    def test_eight_card_states_pad_to_ten_and_mask_extra_select_actions(self, env):
+        """Shorter hands should still expose 10 slots with the extras padded out."""
+        env.reset()
+        _enter_combat(env)
+        env.env.state.hand_indexes = env.env.state.hand_indexes[: MAX_HAND_SIZE - 2]
+        env.env.state.selected_cards = []
+        env.env.state.face_down_cards = []
+
+        obs = env._get_phase_observation()
+
+        assert obs['hand_card_ids'].shape == (MAX_HAND_SIZE,)
+        assert np.all(obs['hand_card_ids'][8:] == -1)
+        assert obs['action_mask'][get_wrapper_select_action(7)] == 1
+        assert obs['action_mask'][get_wrapper_select_action(8)] == 0
+        assert obs['action_mask'][get_wrapper_select_action(9)] == 0
 
     def test_shop_actions_masked(self, env):
         """SHOP_END, SHOP_REROLL, SHOP_BUY should be disabled in combat."""
@@ -301,7 +341,7 @@ class TestInvalidActions:
         _enter_combat(env)
 
         for i in range(6):
-            env.step(int(WrapperAction.SELECT_CARD_BASE + i))
+            env.step(get_wrapper_select_action(i))
 
         _, wrapper_reward, wrapper_terminated, wrapper_truncated, wrapper_info = env.step(
             int(WrapperAction.DISCARD)

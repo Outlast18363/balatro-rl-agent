@@ -3,7 +3,12 @@ from pathlib import Path
 
 import numpy as np
 
-from balatro_gym.constants import Action, Phase
+from balatro_gym.constants import (
+    Action,
+    Phase,
+    SELECT_CARD_ACTION_IDS,
+    get_select_card_action,
+)
 from balatro_gym.save_injection import inject_save_into_balatro_env
 from cs590_env.wrapper import BalatroPhaseWrapper
 
@@ -64,7 +69,7 @@ class InjectedStepMaskTests(unittest.TestCase):
         # Lower the blind target so a single legal hand ends the round quickly.
         env.state.chips_needed = 1
 
-        obs, _, terminated, truncated, info = env.step(int(Action.SELECT_CARD_BASE))
+        obs, _, terminated, truncated, info = env.step(get_select_card_action(0))
         self.assertFalse(terminated)
         self.assertFalse(truncated)
         self.assertNotEqual(info.get("error"), "Invalid action")
@@ -85,7 +90,7 @@ class InjectedStepMaskTests(unittest.TestCase):
         allowed_actions = {
             int(Action.PLAY_HAND),
             int(Action.DISCARD),
-            *range(int(Action.SELECT_CARD_BASE), int(Action.SELECT_CARD_BASE) + int(Action.SELECT_CARD_COUNT)),
+            *SELECT_CARD_ACTION_IDS,
             *range(
                 int(Action.USE_CONSUMABLE_BASE),
                 int(Action.USE_CONSUMABLE_BASE) + int(Action.USE_CONSUMABLE_COUNT),
@@ -104,7 +109,7 @@ class InjectedStepMaskTests(unittest.TestCase):
         for action in range(int(Action.SELECT_BLIND_BASE), int(Action.SKIP_BLIND) + 1):
             self.assertEqual(int(mask[action]), 0)
 
-        obs, _, terminated, truncated, info = env.step(int(Action.SELECT_CARD_BASE))
+        obs, _, terminated, truncated, info = env.step(get_select_card_action(0))
         self.assertFalse(terminated)
         self.assertFalse(truncated)
         self.assertNotEqual(info.get("error"), "Invalid action")
@@ -123,7 +128,7 @@ class InjectedStepMaskTests(unittest.TestCase):
         env, _ = self._inject("first_blind_combat_save.jkr")
 
         for offset in range(6):
-            obs, _, terminated, truncated, info = env.step(int(Action.SELECT_CARD_BASE + offset))
+            obs, _, terminated, truncated, info = env.step(get_select_card_action(offset))
             self.assertFalse(terminated)
             self.assertFalse(truncated)
             self.assertNotEqual(info.get("error"), "Invalid action")

@@ -237,7 +237,7 @@ Why this is minimal:
 
 Recommended tensor form:
 
-- shape `(8, feature_dim)`
+- shape `(10, feature_dim)`
 - fixed slot order matching hand order
 
 #### B. Run-state token

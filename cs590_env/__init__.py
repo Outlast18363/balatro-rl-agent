@@ -13,10 +13,12 @@ build_observation_space, build_action_space : callables
 """
 
 from cs590_env.schema import (
-    WrapperAction,
-    GamePhase,
     build_observation_space,
     build_action_space,
+    GamePhase,
+    WrapperAction,
+    get_wrapper_select_action,
+    get_wrapper_select_slot,
 )
 from cs590_env.wrapper import BalatroPhaseWrapper
 
@@ -24,6 +26,8 @@ __all__ = [
     'BalatroPhaseWrapper',
     'WrapperAction',
     'GamePhase',
+    'get_wrapper_select_action',
+    'get_wrapper_select_slot',
     'build_observation_space',
     'build_action_space',
 ]

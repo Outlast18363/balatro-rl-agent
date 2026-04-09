@@ -22,10 +22,11 @@ from cs590_env.schema import (
     ACTION_SPACE_SIZE, MAX_JOKER_DISPLAY, MAX_CONSUMABLE_DISPLAY,
     MAX_HAND_SIZE, MAX_SHOP_ITEMS, NUM_HAND_TYPES, NUM_RANKS, NUM_SUITS,
     NUM_VOUCHERS,
-    SELECT_CARD_COUNT, USE_CONSUMABLE_COUNT, SWAP_JOKER_COUNT,
+    USE_CONSUMABLE_COUNT, SWAP_JOKER_COUNT,
     SHOP_BUY_COUNT, SELL_JOKER_COUNT, SELL_CONSUMABLE_COUNT,
     SELECT_BLIND_COUNT,
     consumable_sell_value,
+    get_wrapper_select_action,
     build_observation_space, build_action_space,
 )
 
@@ -429,8 +430,8 @@ class BalatroPhaseWrapper(gym.Wrapper):
                 mask[WrapperAction.SKIP_BLIND] = 1
 
         elif phase == GamePhase.COMBAT:
-            for i in range(min(SELECT_CARD_COUNT, len(s.hand_indexes))):
-                mask[WrapperAction.SELECT_CARD_BASE + i] = 1
+            for slot in range(min(MAX_HAND_SIZE, len(s.hand_indexes))):
+                mask[get_wrapper_select_action(slot)] = 1
             n_sel = len(s.selected_cards)
             if 1 <= n_sel <= 5:
                 mask[WrapperAction.PLAY_HAND] = 1

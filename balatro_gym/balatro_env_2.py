@@ -33,7 +33,13 @@ from balatro_gym.cards import (
 )
 
 # Import constants
-from balatro_gym.constants import Phase, Action
+from balatro_gym.constants import (
+    Action,
+    MAX_HAND_SIZE,
+    Phase,
+    SELECT_CARD_ACTION_IDS,
+    get_select_card_slot,
+)
 
 # Import all game modules
 from balatro_gym.balatro_game import BalatroGame
@@ -181,7 +187,7 @@ class UnifiedGameState:
     selected_cards: List[int] = field(default_factory=list)
     hands_left: int = 4
     discards_left: int = 3
-    hand_size: int = 8
+    hand_size: int = MAX_HAND_SIZE
     
     # Collections
     jokers: List[JokerInfo] = field(default_factory=list)
@@ -399,10 +405,10 @@ class BalatroEnv(gym.Env):
         """Create the complete observation space"""
         return spaces.Dict({
             # Hand and card state
-            'hand': spaces.Box(-1, 51, (8,), dtype=np.int8),
+            'hand': spaces.Box(-1, 51, (MAX_HAND_SIZE,), dtype=np.int8),
             'hand_size': spaces.Box(0, 12, (), dtype=np.int8),
             'deck_size': spaces.Box(0, 52, (), dtype=np.int8),
-            'selected_cards': spaces.MultiBinary(8),
+            'selected_cards': spaces.MultiBinary(MAX_HAND_SIZE),
             
             # Scoring state - FIXED: Use int64 for large scores
             'chips_scored': spaces.Box(0, 10_000_000_000, (), dtype=np.int64),  # Changed to int64
@@ -447,15 +453,15 @@ class BalatroEnv(gym.Env):
             # Boss blind info
             'boss_blind_active': spaces.Box(0, 1, (), dtype=np.int8),
             'boss_blind_type': spaces.Box(0, 30, (), dtype=np.int8),
-            'face_down_cards': spaces.MultiBinary(8),
+            'face_down_cards': spaces.MultiBinary(MAX_HAND_SIZE),
                     # ADD: Better hand representation
-            'hand_one_hot': spaces.Box(0, 1, (8, 52), dtype=np.float32),  # One-hot encoding of cards
-            'hand_suits': spaces.Box(0, 4, (8,), dtype=np.int8),  # Suit counts per position
-            'hand_ranks': spaces.Box(0, 13, (8,), dtype=np.int8),  # Rank values per position
+            'hand_one_hot': spaces.Box(0, 1, (MAX_HAND_SIZE, 52), dtype=np.float32),  # One-hot encoding of cards
+            'hand_suits': spaces.Box(0, 4, (MAX_HAND_SIZE,), dtype=np.int8),  # Suit values per position
+            'hand_ranks': spaces.Box(0, 13, (MAX_HAND_SIZE,), dtype=np.int8),  # Rank values per position
             
             # ADD: Hand potential analysis
             'rank_counts': spaces.Box(0, 4, (13,), dtype=np.int8),  # How many of each rank in hand
-            'suit_counts': spaces.Box(0, 8, (4,), dtype=np.int8),   # How many of each suit in hand
+            'suit_counts': spaces.Box(0, MAX_HAND_SIZE, (4,), dtype=np.int8),   # How many of each suit in hand
             'straight_potential': spaces.Box(0, 1, (), dtype=np.float32),  # Probability of making straight
             'flush_potential': spaces.Box(0, 1, (), dtype=np.float32),     # Probability of making flush
             
@@ -1068,17 +1074,16 @@ class BalatroEnv(gym.Env):
             elif progress > 0.8 and self.state.discards_left > 1:
                 reward -= 0.3  # Discourage wasteful discards when ahead
                 
-        elif Action.SELECT_CARD_BASE <= action < Action.SELECT_CARD_BASE + Action.SELECT_CARD_COUNT:
-            card_idx = action - Action.SELECT_CARD_BASE
-            if card_idx < len(self.state.hand_indexes):
+        else:
+            card_idx = get_select_card_slot(int(action))
+            if card_idx is not None and card_idx < len(self.state.hand_indexes):
                 if card_idx in self.state.selected_cards:
                     self.state.selected_cards.remove(card_idx)
                 else:
                     self.state.selected_cards.append(card_idx)
-                    
-        elif Action.USE_CONSUMABLE_BASE <= action < Action.USE_CONSUMABLE_BASE + Action.USE_CONSUMABLE_COUNT:
-            consumable_idx = action - Action.USE_CONSUMABLE_BASE
-            reward, info = self._use_consumable(consumable_idx)
+            elif Action.USE_CONSUMABLE_BASE <= action < Action.USE_CONSUMABLE_BASE + Action.USE_CONSUMABLE_COUNT:
+                consumable_idx = action - Action.USE_CONSUMABLE_BASE
+                reward, info = self._use_consumable(consumable_idx)
         
         return self._get_observation(), reward, terminated, False, info
 
@@ -1456,8 +1461,8 @@ class BalatroEnv(gym.Env):
         
         if self.state.phase == Phase.PLAY:
             # Card selection - allow selecting any card in hand
-            for i in range(min(8, len(self.state.hand_indexes))):
-                mask[Action.SELECT_CARD_BASE + i] = 1
+            for slot in range(min(MAX_HAND_SIZE, len(self.state.hand_indexes))):
+                mask[SELECT_CARD_ACTION_IDS[slot]] = 1
             
             selected_count = len(self.state.selected_cards)
 
@@ -1507,8 +1512,8 @@ class BalatroEnv(gym.Env):
     def _get_observation(self):
         """Build observation dict"""
         # Build hand array
-        hand_array = np.full(8, -1, dtype=np.int8)
-        for i, idx in enumerate(self.state.hand_indexes[:8]):
+        hand_array = np.full(MAX_HAND_SIZE, -1, dtype=np.int8)
+        for i, idx in enumerate(self.state.hand_indexes[:MAX_HAND_SIZE]):
             if idx < len(self.state.deck):
                 hand_array[i] = CardAdapter.encode_to_int(self.state.deck[idx])
         
@@ -1523,7 +1528,10 @@ class BalatroEnv(gym.Env):
             'hand': hand_array,
             'hand_size': np.int8(len(self.state.hand_indexes)),
             'deck_size': np.int8(sum(1 for _ in self.state.deck)),
-            'selected_cards': np.array([1 if i in self.state.selected_cards else 0 for i in range(8)]),
+            'selected_cards': np.array(
+                [1 if i in self.state.selected_cards else 0 for i in range(MAX_HAND_SIZE)],
+                dtype=np.int8,
+            ),
             
             # FIXED: Use proper data types
             'chips_scored': np.int64(self.state.chips_scored),  # Changed to int64
@@ -1561,7 +1569,10 @@ class BalatroEnv(gym.Env):
             # Boss blind info
             'boss_blind_active': np.int8(1 if self.state.boss_blind_active else 0),
             'boss_blind_type': np.int8(self.state.active_boss_blind.value if self.state.active_boss_blind else 0),
-            'face_down_cards': np.array([1 if i in self.state.face_down_cards else 0 for i in range(8)]),
+            'face_down_cards': np.array(
+                [1 if i in self.state.face_down_cards else 0 for i in range(MAX_HAND_SIZE)],
+                dtype=np.int8,
+            ),
         }
         
         # Add shop info if in shop

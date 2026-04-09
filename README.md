@@ -196,7 +196,7 @@ Action layout:
 
 - `0`: `PLAY_HAND`
 - `1`: `DISCARD`
-- `2-9`: `SELECT_CARD_BASE + i`
+- `2-9`, `56-57`: select-card actions for hand slots `0-9`
 - `10-14`: `USE_CONSUMABLE_BASE + i`
 - `20-29`: `SHOP_BUY_BASE + i`
 - `30`: `SHOP_REROLL`
