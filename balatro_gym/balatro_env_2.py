@@ -407,7 +407,7 @@ class BalatroEnv(gym.Env):
             # Hand and card state
             'hand': spaces.Box(-1, 51, (MAX_HAND_SIZE,), dtype=np.int8),
             'hand_size': spaces.Box(0, 12, (), dtype=np.int8),
-            'deck_size': spaces.Box(0, 52, (), dtype=np.int8),
+            'deck_size': spaces.Box(0, 100, (), dtype=np.int8),
             'selected_cards': spaces.MultiBinary(MAX_HAND_SIZE),
             
             # Scoring state - FIXED: Use int64 for large scores

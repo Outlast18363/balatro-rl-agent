@@ -92,6 +92,10 @@ All keys are present in every step. Phase-irrelevant fields are zeroed. Check `o
 | `action_mask` | `(60,)` | int8 | 1 = action legal this step |
 | `deck_ranks` | `(13,)` | int8 | Cards per rank (idx 0=Two .. 12=Ace) |
 | `deck_suits` | `(4,)` | int8 | Cards per suit (0=♣, 1=♦, 2=♥, 3=♠) |
+| `deck_card_ids` | `(100,)` | int8 | Fixed-length deck card IDs, 0-51 for cards and -1 for padded slots |
+| `deck_card_enhancements` | `(100,)` | int8 | Fixed-length deck enhancement enums, -1 for padded slots |
+| `deck_card_editions` | `(100,)` | int8 | Fixed-length deck edition enums, -1 for padded slots |
+| `deck_card_seals` | `(100,)` | int8 | Fixed-length deck seal enums, -1 for padded slots |
 
 For `hand_levels`, `id` is the `HandType` enum ID for that row, while `chip` and `mult` are the level-scaled hand values returned by the env scoring engine for that hand type. They are not the final scored value after card effects, jokers, or boss modifiers.
 
@@ -103,13 +107,13 @@ For `hand_levels`, `id` is the `HandType` enum ID for that row, while `chip` and
 | `target_score` | `()` | int32 | Chips required to beat this blind |
 | `blind_reward` | `()` | int32 | Estimated money for beating this blind |
 
-Deck histograms count the **current full deck state**. Early in a run this is usually `MAX_DECK_SIZE` cards (`52` in the current schema), but it can change if cards are added or removed. The histogram space in the wrapper schema is bounded by `MAX_DECK_SIZE`.
+Deck histograms and deck arrays count the **current full deck state**. Early in a run this is usually 52 cards, but it can change if cards are added or removed. The wrapper schema bounds these fields by `MAX_DECK_SIZE = 100`, and unused deck-array slots are masked with `-1`.
 
 ### Combat Phase Fields
 
 | Key | Shape | Dtype | Description |
 |--------------------------|-------|-------|-------------|
-| `hand_card_ids` | `(10,)` | int8 | Card ID 0–51 (`(rank-2)*4 + suit`), -1 = empty |
+| `hand_card_ids` | `(10,)` | int8 | Card ID 0-51 (`(rank-2)*4 + suit`), -1 = empty; the ID range stays 0-51 even though deck arrays are length 100 |
 | `hand_card_enhancements` | `(10,)` | int8 | Enhancement enum (0=none, 1=bonus, ..., 8=lucky) |
 | `hand_card_editions` | `(10,)` | int8 | Edition enum (0=none, 1=foil, 2=holo, 3=poly, 4=neg) |
 | `hand_card_seals` | `(10,)` | int8 | Seal enum (0=none, 1=gold, 2=red, 3=blue, 4=purple) |
@@ -125,7 +129,7 @@ Deck histograms count the **current full deck state**. Early in a run this is us
 | `boss_id` | `()` | int8 | Active boss blind ID (1–28), 0 = none |
 | `boss_is_active` | `()` | int8 | 1 = boss blind is active |
 
-Deck histograms count the **current draw pile** (current deck minus cards in hand).
+Deck histograms and deck arrays count the **current draw pile** (current deck minus cards in hand). Unused deck-array slots remain `-1`.
 
 ### Shop Phase Fields
 
@@ -137,7 +141,7 @@ Deck histograms count the **current draw pile** (current deck minus cards in han
 | `shop_is_empty` | `(10,)` | int8 | 1 = slot empty |
 | `reroll_cost` | `()` | int16 | Cost to reroll the shop |
 
-Deck histograms count the **current full deck state**.
+Deck histograms and deck arrays count the **current full deck state**. Unused deck-array slots remain `-1`.
 
 ---
 

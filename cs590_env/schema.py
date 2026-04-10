@@ -27,7 +27,7 @@ from balatro_gym.constants import (
 
 # ─── Slot / padding constants ─────────────────────────────────────────────────
 
-MAX_DECK_SIZE = 52            # shared deck-histogram upper bound
+MAX_DECK_SIZE = 100           # shared deck-observation upper bound
 MAX_JOKER_DISPLAY = 10       # padded joker slots in observation
 MAX_CONSUMABLE_DISPLAY = 5   # padded consumable slots in observation
 MAX_SHOP_ITEMS = 10          # max shop inventory slots
@@ -165,6 +165,10 @@ def build_observation_space() -> spaces.Dict:
         # ── Deck histogram (all phases; content varies) ───────
         'deck_ranks':             spaces.Box(0, MAX_DECK_SIZE, (NUM_RANKS,), np.int8),
         'deck_suits':             spaces.Box(0, MAX_DECK_SIZE, (NUM_SUITS,), np.int8),
+        'deck_card_ids':          spaces.Box(-1, 51, (MAX_DECK_SIZE,), np.int8),
+        'deck_card_enhancements': spaces.Box(-1, 10, (MAX_DECK_SIZE,), np.int8),
+        'deck_card_editions':     spaces.Box(-1, 5, (MAX_DECK_SIZE,), np.int8),
+        'deck_card_seals':        spaces.Box(-1, 5, (MAX_DECK_SIZE,), np.int8),
 
         # ── Transition (BLIND_SELECT) fields ──────────────────
         'blind_type':             spaces.Box(0, 3, (), np.int8),

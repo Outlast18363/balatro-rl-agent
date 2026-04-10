@@ -417,7 +417,7 @@ class TestFullCycle:
         total_ranks = int(obs['deck_ranks'].sum())
         total_suits = int(obs['deck_suits'].sum())
         assert total_ranks == total_suits  # both count same cards
-        assert total_ranks == MAX_DECK_SIZE
+        assert total_ranks == len(env.env.state.deck)
 
     def test_combat_deck_excludes_hand(self, env):
         """In combat, deck histogram should exclude cards in hand."""
@@ -425,4 +425,33 @@ class TestFullCycle:
         obs = _enter_combat(env)
         deck_size = int(obs['deck_ranks'].sum())
         hand_size = int(obs['hand_size'])
-        assert deck_size + hand_size == MAX_DECK_SIZE
+        assert deck_size + hand_size == len(env.env.state.deck)
+
+    def test_deck_arrays_are_padded_at_reset(self, env):
+        """Reset obs should expose padded deck arrays with masked empty slots."""
+        obs, _ = env.reset()
+        filled_slots = obs['deck_card_ids'] >= 0
+        empty_slots = ~filled_slots
+        deck_len = len(env.env.state.deck)
+
+        assert obs['deck_card_ids'].shape == (MAX_DECK_SIZE,)
+        assert int(np.count_nonzero(filled_slots)) == deck_len
+        assert int(np.count_nonzero(empty_slots)) == MAX_DECK_SIZE - deck_len
+        assert np.all(obs['deck_card_enhancements'][filled_slots] == 0)
+        assert np.all(obs['deck_card_editions'][filled_slots] == 0)
+        assert np.all(obs['deck_card_seals'][filled_slots] == 0)
+        assert np.all(obs['deck_card_enhancements'][empty_slots] == -1)
+        assert np.all(obs['deck_card_editions'][empty_slots] == -1)
+        assert np.all(obs['deck_card_seals'][empty_slots] == -1)
+
+    def test_combat_deck_arrays_exclude_hand(self, env):
+        """Combat deck arrays should describe the draw pile, not cards in hand."""
+        env.reset()
+        obs = _enter_combat(env)
+        filled_slots = obs['deck_card_ids'] >= 0
+        draw_pile_size = len(env.env.state.deck) - int(obs['hand_size'])
+
+        assert int(np.count_nonzero(filled_slots)) == draw_pile_size
+        assert np.all(obs['deck_card_enhancements'][~filled_slots] == -1)
+        assert np.all(obs['deck_card_editions'][~filled_slots] == -1)
+        assert np.all(obs['deck_card_seals'][~filled_slots] == -1)

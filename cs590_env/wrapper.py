@@ -19,7 +19,7 @@ from balatro_gym.scoring_engine import HandType
 
 from cs590_env.schema import (
     WrapperAction, GamePhase,
-    ACTION_SPACE_SIZE, MAX_JOKER_DISPLAY, MAX_CONSUMABLE_DISPLAY,
+    ACTION_SPACE_SIZE, MAX_DECK_SIZE, MAX_JOKER_DISPLAY, MAX_CONSUMABLE_DISPLAY,
     MAX_HAND_SIZE, MAX_SHOP_ITEMS, NUM_HAND_TYPES, NUM_RANKS, NUM_SUITS,
     NUM_VOUCHERS,
     USE_CONSUMABLE_COUNT, SWAP_JOKER_COUNT,
@@ -205,23 +205,45 @@ class BalatroPhaseWrapper(gym.Wrapper):
             'action_mask':           self._build_phase_mask(),
         }
 
-    def _build_deck_histogram(self, exclude_hand: bool = False) -> Tuple[np.ndarray, np.ndarray]:
-        """Compute rank and suit histograms of the deck.
+    def _build_deck_info(
+        self, exclude_hand: bool = False
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Compute deck histograms and padded per-card arrays in one pass.
 
         Args:
-            exclude_hand: if True, exclude cards currently in hand (draw-pile only).
+            exclude_hand: If ``True``, exclude cards currently in hand so the
+                returned deck info reflects the draw pile only.
 
         Returns:
-            (rank_counts[13], suit_counts[4]) int8 arrays.
+            Tuple containing:
+            - rank_counts: Rank histogram with shape ``(NUM_RANKS,)``.
+            - suit_counts: Suit histogram with shape ``(NUM_SUITS,)``.
+            - card_ids: Padded card IDs with shape ``(MAX_DECK_SIZE,)``.
+            - card_enhancements: Padded enhancement enums with shape ``(MAX_DECK_SIZE,)``.
+            - card_editions: Padded edition enums with shape ``(MAX_DECK_SIZE,)``.
+            - card_seals: Padded seal enums with shape ``(MAX_DECK_SIZE,)``.
         """
         ranks = np.zeros(NUM_RANKS, dtype=np.int8)
         suits = np.zeros(NUM_SUITS, dtype=np.int8)
+        card_ids = np.full(MAX_DECK_SIZE, -1, dtype=np.int8)
+        card_enh = np.full(MAX_DECK_SIZE, -1, dtype=np.int8)
+        card_ed = np.full(MAX_DECK_SIZE, -1, dtype=np.int8)
+        card_seal = np.full(MAX_DECK_SIZE, -1, dtype=np.int8)
         hand_set = set(self._state.hand_indexes) if exclude_hand else set()
+
+        slot = 0
         for i, card in enumerate(self._state.deck):
             if i not in hand_set:
                 ranks[card.rank.value - 2] += 1   # Rank.TWO=2 → idx 0
                 suits[card.suit.value] += 1
-        return ranks, suits
+                if slot < MAX_DECK_SIZE:
+                    card_ids[slot] = int(card)
+                    cs = self._state.card_states.get(i)
+                    card_enh[slot] = int(cs.enhancement) if cs else 0
+                    card_ed[slot] = int(cs.edition) if cs else 0
+                    card_seal[slot] = int(cs.seal) if cs else 0
+                    slot += 1
+        return ranks, suits, card_ids, card_enh, card_ed, card_seal
 
     def _phase_zeros(self) -> dict:
         """Return zeroed-out phase-specific fields.
@@ -261,6 +283,10 @@ class BalatroPhaseWrapper(gym.Wrapper):
             # Deck
             'deck_ranks':             np.zeros(NUM_RANKS, dtype=np.int8),
             'deck_suits':             np.zeros(NUM_SUITS, dtype=np.int8),
+            'deck_card_ids':          np.full(MAX_DECK_SIZE, -1, dtype=np.int8),
+            'deck_card_enhancements': np.full(MAX_DECK_SIZE, -1, dtype=np.int8),
+            'deck_card_editions':     np.full(MAX_DECK_SIZE, -1, dtype=np.int8),
+            'deck_card_seals':        np.full(MAX_DECK_SIZE, -1, dtype=np.int8),
         }
 
     # ── Per-phase builders ────────────────────────────────────────────────
@@ -288,9 +314,15 @@ class BalatroPhaseWrapper(gym.Wrapper):
         obs['target_score'] = np.int32(target)
         obs['blind_reward'] = np.int32(blind_reward)
 
-        ranks, suits = self._build_deck_histogram(exclude_hand=False)
+        ranks, suits, card_ids, card_enh, card_ed, card_seal = self._build_deck_info(
+            exclude_hand=False
+        )
         obs['deck_ranks'] = ranks
         obs['deck_suits'] = suits
+        obs['deck_card_ids'] = card_ids
+        obs['deck_card_enhancements'] = card_enh
+        obs['deck_card_editions'] = card_ed
+        obs['deck_card_seals'] = card_seal
         return obs
 
     def _build_combat_obs(self) -> dict:
@@ -345,9 +377,15 @@ class BalatroPhaseWrapper(gym.Wrapper):
             s.active_boss_blind.value if s.active_boss_blind else 0)
         obs['boss_is_active']         = np.int8(1 if s.boss_blind_active else 0)
 
-        ranks, suits = self._build_deck_histogram(exclude_hand=True)
+        ranks, suits, deck_ids, deck_enh, deck_ed, deck_seal = self._build_deck_info(
+            exclude_hand=True
+        )
         obs['deck_ranks'] = ranks
         obs['deck_suits'] = suits
+        obs['deck_card_ids'] = deck_ids
+        obs['deck_card_enhancements'] = deck_enh
+        obs['deck_card_editions'] = deck_ed
+        obs['deck_card_seals'] = deck_seal
         return obs
 
     def _build_shop_obs(self) -> dict:
@@ -382,9 +420,15 @@ class BalatroPhaseWrapper(gym.Wrapper):
         obs['shop_is_empty']   = empty
         obs['reroll_cost']     = np.int16(s.shop_reroll_cost)
 
-        ranks, suits = self._build_deck_histogram(exclude_hand=False)
+        ranks, suits, card_ids, card_enh, card_ed, card_seal = self._build_deck_info(
+            exclude_hand=False
+        )
         obs['deck_ranks'] = ranks
         obs['deck_suits'] = suits
+        obs['deck_card_ids'] = card_ids
+        obs['deck_card_enhancements'] = card_enh
+        obs['deck_card_editions'] = card_ed
+        obs['deck_card_seals'] = card_seal
         return obs
 
     # ─── Action masking ───────────────────────────────────────────────────
