@@ -20,6 +20,20 @@ from cs590_env.schema import (
     get_wrapper_select_action,
     get_wrapper_select_slot,
 )
+from cs590_env.rollout import (
+    ConfiguredPhaseEnv,
+    FirstValidPolicy,
+    PhaseEnvSpec,
+    RandomMaskedPolicy,
+    VectorRolloutBatch,
+    SingleEnvRollout,
+    collect_branch_rollout,
+    collect_vector_rollout,
+    make_phase_env,
+    make_phase_env_from_spec,
+    make_vector_env,
+    make_vector_env_from_specs,
+)
 from cs590_env.wrapper import BalatroPhaseWrapper
 
 __all__ = [
@@ -30,4 +44,16 @@ __all__ = [
     'get_wrapper_select_slot',
     'build_observation_space',
     'build_action_space',
+    'ConfiguredPhaseEnv',
+    'FirstValidPolicy',
+    'PhaseEnvSpec',
+    'RandomMaskedPolicy',
+    'VectorRolloutBatch',
+    'SingleEnvRollout',
+    'collect_branch_rollout',
+    'collect_vector_rollout',
+    'make_phase_env',
+    'make_phase_env_from_spec',
+    'make_vector_env',
+    'make_vector_env_from_specs',
 ]
