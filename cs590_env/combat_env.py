@@ -18,7 +18,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from balatro_gym.balatro_env_2 import BalatroEnv
+from balatro_gym.balatro_env_2 import BalatroEnv, DeterministicRNG
 from balatro_gym.constants import MAX_HAND_SIZE
 from cs590_env.combat_wrapper import CombatActionWrapper
 from cs590_env.schema import build_observation_space
@@ -82,6 +82,7 @@ class PooledCombatEnv(gym.Env):
 
         self._base_env.reset(seed=fresh_seed)
         self._base_env.load_state(deepcopy(snapshot))
+        self._base_env.rng = DeterministicRNG(fresh_seed)
 
         self._phase_env._auto_skip_pack_open()
         obs = self._phase_env._get_phase_observation()
