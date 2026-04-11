@@ -13,6 +13,9 @@ build_observation_space, build_action_space : callables
 CombatActionWrapper
     Factored action wrapper that bridges per-card binary selections
     + play/discard with the sequential toggle-based BalatroPhaseWrapper.
+PooledCombatEnv : gym.Env
+    Combat-only env that samples starting positions from a snapshot pool.
+    Compatible with ``gymnasium.vector.AsyncVectorEnv`` for true parallelism.
 """
 
 from cs590_env.schema import (
@@ -39,6 +42,7 @@ from cs590_env.rollout import (
 )
 from cs590_env.wrapper import BalatroPhaseWrapper
 from cs590_env.combat_wrapper import CombatActionWrapper
+from cs590_env.combat_env import PooledCombatEnv, make_pooled_combat_env
 
 __all__ = [
     'BalatroPhaseWrapper',
@@ -61,4 +65,6 @@ __all__ = [
     'make_vector_env',
     'make_vector_env_from_specs',
     'CombatActionWrapper',
+    'PooledCombatEnv',
+    'make_pooled_combat_env',
 ]
