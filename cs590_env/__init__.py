@@ -10,6 +10,9 @@ GamePhase : IntEnum
     TRANSITION (blind select), COMBAT (play), SHOP.
 build_observation_space, build_action_space : callables
     Gymnasium space constructors for the wrapper's obs/action spaces.
+CombatActionWrapper
+    Factored action wrapper that bridges per-card binary selections
+    + play/discard with the sequential toggle-based BalatroPhaseWrapper.
 """
 
 from cs590_env.schema import (
@@ -35,6 +38,7 @@ from cs590_env.rollout import (
     make_vector_env_from_specs,
 )
 from cs590_env.wrapper import BalatroPhaseWrapper
+from cs590_env.combat_wrapper import CombatActionWrapper
 
 __all__ = [
     'BalatroPhaseWrapper',
@@ -56,4 +60,5 @@ __all__ = [
     'make_phase_env_from_spec',
     'make_vector_env',
     'make_vector_env_from_specs',
+    'CombatActionWrapper',
 ]
