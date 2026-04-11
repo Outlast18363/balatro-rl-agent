@@ -226,9 +226,9 @@ class BalatroPhaseWrapper(gym.Wrapper):
         ranks = np.zeros(NUM_RANKS, dtype=np.int8)
         suits = np.zeros(NUM_SUITS, dtype=np.int8)
         card_ids = np.full(MAX_DECK_SIZE, -1, dtype=np.int8)
-        card_enh = np.full(MAX_DECK_SIZE, -1, dtype=np.int8)
-        card_ed = np.full(MAX_DECK_SIZE, -1, dtype=np.int8)
-        card_seal = np.full(MAX_DECK_SIZE, -1, dtype=np.int8)
+        card_enh = np.zeros(MAX_DECK_SIZE, dtype=np.int8)
+        card_ed = np.zeros(MAX_DECK_SIZE, dtype=np.int8)
+        card_seal = np.zeros(MAX_DECK_SIZE, dtype=np.int8)
         hand_set = set(self._state.hand_indexes) if exclude_hand else set()
 
         slot = 0
@@ -284,9 +284,9 @@ class BalatroPhaseWrapper(gym.Wrapper):
             'deck_ranks':             np.zeros(NUM_RANKS, dtype=np.int8),
             'deck_suits':             np.zeros(NUM_SUITS, dtype=np.int8),
             'deck_card_ids':          np.full(MAX_DECK_SIZE, -1, dtype=np.int8),
-            'deck_card_enhancements': np.full(MAX_DECK_SIZE, -1, dtype=np.int8),
-            'deck_card_editions':     np.full(MAX_DECK_SIZE, -1, dtype=np.int8),
-            'deck_card_seals':        np.full(MAX_DECK_SIZE, -1, dtype=np.int8),
+            'deck_card_enhancements': np.zeros(MAX_DECK_SIZE, dtype=np.int8),
+            'deck_card_editions':     np.zeros(MAX_DECK_SIZE, dtype=np.int8),
+            'deck_card_seals':        np.zeros(MAX_DECK_SIZE, dtype=np.int8),
         }
 
     # ── Per-phase builders ────────────────────────────────────────────────

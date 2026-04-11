@@ -166,9 +166,9 @@ def build_observation_space() -> spaces.Dict:
         'deck_ranks':             spaces.Box(0, MAX_DECK_SIZE, (NUM_RANKS,), np.int8),
         'deck_suits':             spaces.Box(0, MAX_DECK_SIZE, (NUM_SUITS,), np.int8),
         'deck_card_ids':          spaces.Box(-1, 51, (MAX_DECK_SIZE,), np.int8),
-        'deck_card_enhancements': spaces.Box(-1, 10, (MAX_DECK_SIZE,), np.int8),
-        'deck_card_editions':     spaces.Box(-1, 5, (MAX_DECK_SIZE,), np.int8),
-        'deck_card_seals':        spaces.Box(-1, 5, (MAX_DECK_SIZE,), np.int8),
+        'deck_card_enhancements': spaces.Box(0, 10, (MAX_DECK_SIZE,), np.int8),
+        'deck_card_editions':     spaces.Box(0, 5, (MAX_DECK_SIZE,), np.int8),
+        'deck_card_seals':        spaces.Box(0, 5, (MAX_DECK_SIZE,), np.int8),
 
         # ── Transition (BLIND_SELECT) fields ──────────────────
         'blind_type':             spaces.Box(0, 3, (), np.int8),
