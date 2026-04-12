@@ -1132,20 +1132,22 @@ def load_snapshot_pool(save_dir: str = "save_files", seed: int = 42) -> list[dic
     ``make_pooled_combat_env``.
 
     Args:
-        save_dir: Directory containing ``.jkr`` files.
+        save_dir: Root save directory. Snapshots are loaded only from the
+            ``combat`` subdirectory (``<save_dir>/combat``).
         seed: Seed forwarded to ``inject_save_into_balatro_env``.
 
     Returns:
         Non-empty list of snapshot dicts.
 
     Raises:
-        FileNotFoundError: If *save_dir* contains no ``.jkr`` files.
+        FileNotFoundError: If ``<save_dir>/combat`` contains no ``.jkr`` files.
     """
     pool: list[dict] = []
-    for jkr_path in sorted(Path(save_dir).glob("*.jkr")):
+    combat_dir = Path(save_dir) / "combat"
+    for jkr_path in sorted(combat_dir.glob("*.jkr")):
         env, _report = inject_save_into_balatro_env(jkr_path, seed=seed)
         pool.append(env.save_state())
     if not pool:
-        raise FileNotFoundError(f"No .jkr files found in {save_dir}/")
+        raise FileNotFoundError(f"No .jkr files found in {combat_dir}/")
     return pool
 

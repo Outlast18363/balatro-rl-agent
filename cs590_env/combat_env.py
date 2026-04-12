@@ -99,6 +99,14 @@ class PooledCombatEnv(gym.Env):
         execution = int(action[MAX_HAND_SIZE])
 
         obs, reward, done, info = self._combat.step(card_selections, execution)
+
+        if done:
+            # Return a valid combat obs so the training loop never sees
+            # terminal (SHOP/TRANSITION) observations.  AsyncVectorEnv will
+            # also auto-reset, but for a snapshot-pool env the extra reset
+            # is harmless — it just loads another random snapshot.
+            obs, _ = self.reset()
+
         return obs, reward, done, False, info
 
     def close(self) -> None:
