@@ -20,6 +20,8 @@ VecRolloutBuffer, compute_gae_vectorized
     Vectorized rollout buffer and per-env GAE for parallel PPO training.
 dict_to_tensors, get_card_mask, mask_logits
     Observation/action helpers shared by rollout collection and PPO update.
+load_snapshot_pool : callable
+    Build a snapshot pool from ``.jkr`` save files on disk.
 """
 
 from cs590_env.schema import (
@@ -41,6 +43,7 @@ from cs590_env.combat_env import (
     get_card_mask,
     mask_logits,
 )
+from cs590_env.snapshots import load_snapshot_pool
 
 __all__ = [
     'BalatroPhaseWrapper',
@@ -58,4 +61,5 @@ __all__ = [
     'dict_to_tensors',
     'get_card_mask',
     'mask_logits',
+    'load_snapshot_pool',
 ]
