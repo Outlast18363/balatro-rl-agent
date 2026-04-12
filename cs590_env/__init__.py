@@ -43,7 +43,7 @@ from cs590_env.combat_env import (
     get_card_mask,
     mask_logits,
 )
-from cs590_env.snapshots import load_snapshot_pool
+from balatro_gym.save_injection import load_snapshot_pool
 
 __all__ = [
     'BalatroPhaseWrapper',
