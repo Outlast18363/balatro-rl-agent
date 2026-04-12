@@ -16,6 +16,10 @@ CombatActionWrapper
 PooledCombatEnv : gym.Env
     Combat-only env that samples starting positions from a snapshot pool.
     Compatible with ``gymnasium.vector.AsyncVectorEnv`` for true parallelism.
+VecRolloutBuffer, compute_gae_vectorized
+    Vectorized rollout buffer and per-env GAE for parallel PPO training.
+dict_to_tensors, get_card_mask, mask_logits
+    Observation/action helpers shared by rollout collection and PPO update.
 """
 
 from cs590_env.schema import (
@@ -26,23 +30,17 @@ from cs590_env.schema import (
     get_wrapper_select_action,
     get_wrapper_select_slot,
 )
-from cs590_env.rollout import (
-    ConfiguredPhaseEnv,
-    FirstValidPolicy,
-    PhaseEnvSpec,
-    RandomMaskedPolicy,
-    VectorRolloutBatch,
-    SingleEnvRollout,
-    collect_branch_rollout,
-    collect_vector_rollout,
-    make_phase_env,
-    make_phase_env_from_spec,
-    make_vector_env,
-    make_vector_env_from_specs,
-)
 from cs590_env.wrapper import BalatroPhaseWrapper
 from cs590_env.combat_wrapper import CombatActionWrapper
-from cs590_env.combat_env import PooledCombatEnv, make_pooled_combat_env
+from cs590_env.combat_env import (
+    PooledCombatEnv,
+    make_pooled_combat_env,
+    VecRolloutBuffer,
+    compute_gae_vectorized,
+    dict_to_tensors,
+    get_card_mask,
+    mask_logits,
+)
 
 __all__ = [
     'BalatroPhaseWrapper',
@@ -52,19 +50,12 @@ __all__ = [
     'get_wrapper_select_slot',
     'build_observation_space',
     'build_action_space',
-    'ConfiguredPhaseEnv',
-    'FirstValidPolicy',
-    'PhaseEnvSpec',
-    'RandomMaskedPolicy',
-    'VectorRolloutBatch',
-    'SingleEnvRollout',
-    'collect_branch_rollout',
-    'collect_vector_rollout',
-    'make_phase_env',
-    'make_phase_env_from_spec',
-    'make_vector_env',
-    'make_vector_env_from_specs',
     'CombatActionWrapper',
     'PooledCombatEnv',
     'make_pooled_combat_env',
+    'VecRolloutBuffer',
+    'compute_gae_vectorized',
+    'dict_to_tensors',
+    'get_card_mask',
+    'mask_logits',
 ]
