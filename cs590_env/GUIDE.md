@@ -66,6 +66,14 @@ obs, reward, terminated, truncated, info = env.step(action)
 
 Sending a masked action returns `reward=-1.0` and `info['error']` with no state change.
 
+For `PLAY_HAND` in the combat phase, the wrapper overrides the base env's play reward with an explicit blind-clear formula:
+
+```python
+reward = 2.0 * (plays_remaining + log10(score)) * int(pass_blind)
+```
+
+where `plays_remaining` is the number of unused hands left after the winning play, `score` is `info['final_score']`, and `pass_blind` is `1` only when the play beats the current blind. The wrapper also records `info['base_reward']`, `info['wrapper_reward_formula']`, and `info['wrapper_reward_breakdown']` for debugging.
+
 ---
 
 ## Observation Space — `Dict`
@@ -212,6 +220,7 @@ obs, *_ = env.step(get_wrapper_select_action(2))  # select card 2
 
 # 2. Play the selected hand
 obs, reward, terminated, truncated, info = env.step(int(WrapperAction.PLAY_HAND))
-# reward reflects scoring; if current_score >= target_score, blind is beaten
+# reward = 2 * (plays_remaining + log10(info['final_score'])) * 1_pass
+# so only a blind-clearing play gets positive combat reward
 # and phase transitions to SHOP
 ```

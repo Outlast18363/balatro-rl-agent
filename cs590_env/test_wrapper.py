@@ -27,7 +27,7 @@ from cs590_env.schema import (
     WrapperAction,
     get_wrapper_select_action,
 )
-from cs590_env.wrapper import BalatroPhaseWrapper
+from cs590_env.wrapper import BalatroPhaseWrapper, compute_combat_pass_reward
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -314,6 +314,64 @@ class TestCrossPhaseSell:
             assert mask[WrapperAction.SELL_JOKER_BASE + i] == 0
         for i in range(SELL_CONSUMABLE_COUNT):
             assert mask[WrapperAction.SELL_CONSUMABLE_BASE + i] == 0
+
+
+class TestCombatReward:
+    def test_combat_pass_reward_helper_matches_formula(self):
+        """Helper should implement 2 * (plays_remaining + log10(score)) * 1_pass."""
+        reward = compute_combat_pass_reward(
+            plays_remaining=3,
+            score=1000,
+            passed=True,
+        )
+        assert reward == pytest.approx(12.0)
+
+    def test_combat_pass_reward_helper_zero_when_not_passed(self):
+        """Failing to clear the blind should zero-out the pass indicator."""
+        reward = compute_combat_pass_reward(
+            plays_remaining=3,
+            score=1000,
+            passed=False,
+        )
+        assert reward == 0.0
+
+    def test_play_hand_reward_uses_wrapper_pass_formula(self, env):
+        """Winning hands should use the wrapper's explicit pass-reward formula."""
+        env.reset()
+        _enter_combat(env)
+        env.env.state.chips_needed = 1
+        env.step(int(WrapperAction.SELECT_CARD_BASE))
+
+        hands_before = int(env.env.state.hands_left)
+        obs, reward, terminated, truncated, info = env.step(int(WrapperAction.PLAY_HAND))
+
+        expected_reward = compute_combat_pass_reward(
+            plays_remaining=hands_before - 1,
+            score=float(info['final_score']),
+            passed=True,
+        )
+        assert obs['phase'] == GamePhase.SHOP
+        assert not terminated
+        assert not truncated
+        assert info['beat_blind'] is True
+        assert reward == pytest.approx(expected_reward)
+        assert info['base_reward'] != pytest.approx(reward)
+        assert info['wrapper_reward_formula'] == '2 * (plays_remaining + log10(score)) * 1_pass'
+
+    def test_play_hand_reward_is_zero_when_blind_not_cleared(self, env):
+        """Non-winning plays should return zero combat reward from the wrapper."""
+        env.reset()
+        _enter_combat(env)
+        env.env.state.chips_needed = 10**9
+        env.step(int(WrapperAction.SELECT_CARD_BASE))
+
+        _, reward, terminated, truncated, info = env.step(int(WrapperAction.PLAY_HAND))
+
+        assert reward == 0.0
+        assert not info.get('beat_blind', False)
+        assert not terminated
+        assert not truncated
+        assert info['wrapper_reward_breakdown']['pass_indicator'] == 0
 
 
 # ─── Invalid actions ──────────────────────────────────────────────────────────

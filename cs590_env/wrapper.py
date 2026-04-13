@@ -40,6 +40,37 @@ _PHASE_MAP = {
 
 _BLIND_KEYS = ('small', 'big', 'boss')
 
+# Combat pass-reward shaping:
+#   reward = coefficient * (plays_remaining + log10(score)) * 1_pass
+COMBAT_PASS_REWARD_COEFFICIENT = 2.0
+COMBAT_PASS_REWARD_SCORE_FLOOR = 1.0
+
+
+def compute_combat_pass_reward(
+    *,
+    plays_remaining: int,
+    score: float,
+    passed: bool,
+    coefficient: float = COMBAT_PASS_REWARD_COEFFICIENT,
+) -> float:
+    """Compute the wrapper's explicit combat clear reward.
+
+    Args:
+        plays_remaining: Number of unused plays left after the winning hand.
+        score: Score term used inside the logarithm for the winning hand.
+        passed: Whether the blind/combat was cleared on this step.
+        coefficient: Scalar multiplier applied to the whole expression.
+
+    Returns:
+        Reward given by ``coefficient * (plays_remaining + log10(score)) * 1_pass``.
+        Returns ``0.0`` whenever ``passed`` is ``False``.
+    """
+    if not passed:
+        return 0.0
+
+    safe_score = max(COMBAT_PASS_REWARD_SCORE_FLOOR, float(score))
+    return coefficient * (max(0, int(plays_remaining)) + float(np.log10(safe_score)))
+
 
 class BalatroPhaseWrapper(gym.Wrapper):
     """Phase-aware wrapper over BalatroEnv.
@@ -92,6 +123,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
         """
         prev_phase = self._game_phase
         mask = self._build_phase_mask()
+        play_hands_before = int(self._state.hands_left)
 
         if mask[action] == 0:
             obs = self._get_phase_observation()
@@ -107,6 +139,13 @@ class BalatroPhaseWrapper(gym.Wrapper):
             info['translated_action'] = -1
         else:
             _, reward, terminated, truncated, info = self.env.step(action)
+            reward = self._override_combat_play_reward(
+                action=action,
+                previous_phase=prev_phase,
+                hands_before_play=play_hands_before,
+                base_reward=reward,
+                info=info,
+            )
             info['translated_action'] = action
             if not terminated:
                 self._auto_skip_pack_open()
@@ -539,6 +578,53 @@ class BalatroPhaseWrapper(gym.Wrapper):
         if WrapperAction.USE_CONSUMABLE_BASE <= action < WrapperAction.USE_CONSUMABLE_BASE + USE_CONSUMABLE_COUNT:
             return self._handle_use_consumable_nonplay(action - WrapperAction.USE_CONSUMABLE_BASE)
         return -1.0, {'error': 'Unrecognised wrapper action'}
+
+    def _override_combat_play_reward(
+        self,
+        *,
+        action: int,
+        previous_phase: GamePhase,
+        hands_before_play: int,
+        base_reward: float,
+        info: dict,
+    ) -> float:
+        """Override PLAY_HAND reward with the wrapper's explicit pass formula.
+
+        Args:
+            action: Action ID that was executed in the base env.
+            previous_phase: Wrapper phase before the base step.
+            hands_before_play: Hands available before executing the action.
+            base_reward: Reward originally returned by the base env.
+            info: Mutable step info dict from the base env.
+
+        Returns:
+            The wrapper reward to expose for this step. Non-combat or non-play
+            actions keep the original ``base_reward`` unchanged.
+        """
+        if previous_phase != GamePhase.COMBAT or action != int(WrapperAction.PLAY_HAND):
+            return base_reward
+
+        passed = bool(info.get('beat_blind', False))
+        score = float(info.get('final_score', 0.0))
+        plays_remaining = max(0, hands_before_play - 1)
+        combat_reward = compute_combat_pass_reward(
+            plays_remaining=plays_remaining,
+            score=score,
+            passed=passed,
+        )
+
+        info['base_reward'] = base_reward
+        info['wrapper_reward_formula'] = (
+            '2 * (plays_remaining + log10(score)) * 1_pass'
+        )
+        info['wrapper_reward_breakdown'] = {
+            'coefficient': COMBAT_PASS_REWARD_COEFFICIENT,
+            'plays_remaining': plays_remaining,
+            'score': score,
+            'pass_indicator': int(passed),
+            'combat_reward': combat_reward,
+        }
+        return combat_reward
 
     # ── Individual action handlers ────────────────────────────────────────
 
