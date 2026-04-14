@@ -228,26 +228,28 @@ def print_combat_state(
     if not shown:
         print("  (none)", file=file)
 
-    deck_ranks = _get_row(obs, "deck_ranks", env_index).astype(int).ravel()
-    deck_suits = _get_row(obs, "deck_suits", env_index).astype(int).ravel()
     deck_ids = _get_row(obs, "deck_card_ids", env_index).astype(int).ravel()
     n_deck_slots = int((deck_ids >= 0).sum())
-    rsum, ssum = int(deck_ranks.sum()), int(deck_suits.sum())
     print("\n=== Draw pile (deck minus hand in combat) ===", file=file)
-    print(f"  padded deck slots used: {n_deck_slots}  rank_hist_sum={rsum}  suit_hist_sum={ssum}", file=file)
-    deck_cards_fmt = [_format_card_id(int(cid)) for cid in deck_ids if int(cid) >= 0]
-    if deck_cards_fmt:
-        print("  [" + ", ".join(deck_cards_fmt) + "]", file=file)
-    else:
-        print("  []", file=file)
-    rank_labels = [Rank(r + 2).short for r in range(NUM_RANKS)]
-    parts = [f"{lab}:{int(deck_ranks[i])}" for i, lab in enumerate(rank_labels) if deck_ranks[i]]
-    if parts:
-        print("  ranks: " + "  ".join(parts), file=file)
-    suit_syms = [Suit(s).symbol() for s in range(4)]
-    sparts = [f"{sym}:{int(deck_suits[i])}" for i, sym in enumerate(suit_syms) if deck_suits[i]]
-    if sparts:
-        print("  suits: " + "  ".join(sparts), file=file)
+    print(f"  padded deck slots used: {n_deck_slots}", file=file)
+
+    # Same id layout as hand: suit = id % 4, rank index = id // 4 (13 ranks 2..A).
+    grid: list[list[int]] = [[0] * NUM_RANKS for _ in range(4)]
+    for cid in deck_ids:
+        ci = int(cid)
+        if ci < 0:
+            continue
+        grid[ci % 4][ci // 4] += 1
+
+    cw = 2
+    corner_w = 2
+    indent = "  "
+    hdr = indent + " " * corner_w + "".join(f"{Rank(r + 2).short:^{cw}}" for r in range(NUM_RANKS))
+    print(hdr, file=file)
+    for s in range(4):
+        sym = Suit(s).symbol()
+        cells = "".join("  " if grid[s][ri] == 0 else str(grid[s][ri]).rjust(cw) for ri in range(NUM_RANKS))
+        print(indent + f"{sym:<{corner_w}}" + cells, file=file)
 
     hl = _get_row(obs, "hand_levels", env_index)
     if hl.ndim == 1 and hl.size == NUM_HAND_TYPES * 4:
