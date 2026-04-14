@@ -12,10 +12,10 @@ import random
 
 # Card suits and ranks
 class Suit(IntEnum):
-    SPADES = 0
-    CLUBS = 1
+    CLUBS = 0
+    DIAMONDS = 1
     HEARTS = 2
-    DIAMONDS = 3
+    SPADES = 3
 
 class Rank(IntEnum):
     TWO = 2
@@ -31,6 +31,22 @@ class Rank(IntEnum):
     QUEEN = 12
     KING = 13
     ACE = 14
+
+    @property
+    def base_chips(self) -> int:
+        """Return the base chip value for this rank.
+
+        Args:
+            None.
+
+        Returns:
+            The shared Balatro chip value for the rank.
+        """
+        if self <= Rank.TEN:
+            return int(self)
+        if self == Rank.ACE:
+            return 11
+        return 10
 
 # Card enhancements
 class Enhancement(IntEnum):
@@ -55,9 +71,9 @@ class Edition(IntEnum):
 # Card seals
 class Seal(IntEnum):
     NONE = 0
-    RED = 1      # Retrigger card
-    BLUE = 2     # Creates planet card when held
-    GOLD = 3     # +$3 when played
+    GOLD = 1     # +$3 when played
+    RED = 2      # Retrigger card
+    BLUE = 3     # Creates planet card when held
     PURPLE = 4   # Creates tarot card when discarded
 
 @dataclass
@@ -70,14 +86,39 @@ class Card:
     seal: Seal = Seal.NONE
     
     def encode(self) -> int:
-        """Encode to 0-51 index"""
-        return self.suit * 13 + (self.rank - 2)
+        """Encode to the shared 0-51 card index.
+
+        Args:
+            None.
+
+        Returns:
+            The same card ID used by `balatro_gym.cards.Card.__int__`.
+        """
+        return int(self)
+
+    def __int__(self) -> int:
+        """Encode to the shared observation/scoring card index.
+
+        Args:
+            None.
+
+        Returns:
+            A stable integer ID computed from rank-major suit ordering.
+        """
+        return (int(self.rank) - 2) * 4 + int(self.suit)
     
     @classmethod
     def decode(cls, index: int) -> 'Card':
-        """Decode from 0-51 index"""
-        suit = Suit(index // 13)
-        rank = Rank(index % 13 + 2)
+        """Decode from the shared 0-51 card index.
+
+        Args:
+            index: Shared integer card ID in rank-major suit ordering.
+
+        Returns:
+            A mutable consumable-side card with matching rank and suit.
+        """
+        suit = Suit(index % 4)
+        rank = Rank(index // 4 + 2)
         return cls(rank, suit)
 
 # ---------------------------------------------------------------------------
@@ -630,16 +671,18 @@ class ConsumableManager:
         # Check if it's a Tarot card
         try:
             tarot = TarotCard[consumable_name.upper().replace(' ', '_')]
-            return self.tarot_effects.apply_tarot(tarot, game_state, target_cards)
         except KeyError:
             pass
+        else:
+            return self.tarot_effects.apply_tarot(tarot, game_state, target_cards)
         
         # Check if it's a Spectral card
         try:
             spectral = SpectralCard[consumable_name.upper().replace(' ', '_')]
-            return self.spectral_effects.apply_spectral(spectral, game_state, target_cards)
         except KeyError:
             pass
+        else:
+            return self.spectral_effects.apply_spectral(spectral, game_state, target_cards)
         
         # Check if it's a Planet card
         planet_names = ['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter',

@@ -45,7 +45,7 @@ from balatro_gym.constants import (
 from balatro_gym.balatro_game import BalatroGame
 from balatro_gym.scoring_engine import ScoreEngine, HandType
 from balatro_gym.shop import Shop, ShopAction, PlayerState, ItemType, ShopItem
-from balatro_gym.jokers import JokerInfo, JOKER_LIBRARY
+from balatro_gym.jokers import JokerInfo, JOKER_LIBRARY, joker_sell_value
 from balatro_gym.planets import Planet
 from balatro_gym.consumables import (
     TarotCard, SpectralCard, ConsumableManager
@@ -294,11 +294,22 @@ class CardAdapter:
     
     @staticmethod
     def from_game_card(game_card: Any) -> Card:
-        """Convert old game card format to new Card primitive"""
-        # Handle old game card format (may have rank/suit as attributes)
+        """Convert a card-like object to the shared immutable card primitive.
+
+        Args:
+            game_card: Any object exposing ``rank`` and ``suit`` attributes,
+                using either shared enums or older zero-based enums.
+
+        Returns:
+            A `balatro_gym.cards.Card` with normalized shared rank/suit enums.
+        """
         if hasattr(game_card, 'rank') and hasattr(game_card, 'suit'):
-            rank_value = game_card.rank.value + 2 if hasattr(game_card.rank, 'value') else game_card.rank
+            rank_value = game_card.rank.value if hasattr(game_card.rank, 'value') else game_card.rank
             suit_value = game_card.suit.value if hasattr(game_card.suit, 'value') else game_card.suit
+            rank_value = int(rank_value)
+            suit_value = int(suit_value)
+            if 0 <= rank_value <= 12:
+                rank_value += 2
             return Card(rank=Rank(rank_value), suit=Suit(suit_value))
         return game_card  # Already in new format
     
@@ -632,16 +643,16 @@ class BalatroEnv(gym.Env):
             self.game.hand_indexes = self.state.hand_indexes
             self.game.round_hands = self.state.hands_left
             self.game.round_discards = self.state.discards_left
-            self.game.round_score = self.state.chips_scored
+            self.game.round_score = self.state.round_chips_scored
 
     def step(self, action: int):
         """Execute action and return step results"""
-        # Treat hard environment ceilings as truncation so GAE can bootstrap.
-        if self.state.ante > 100:
-            return self._get_observation(), 0.0, False, True, {'truncated': 'max_ante_reached'}
-
-        if self.state.chips_scored > 1_000_000_000:
-            return self._get_observation(), 0.0, False, True, {'truncated': 'max_score_reached'}
+        # Check for termination conditions
+        if self.state.ante > 100:  # Terminate after ante 100
+            return self._get_observation(), 0.0, True, False, {'terminated': 'max_ante_reached'}
+        
+        if self.state.chips_scored > 1_000_000_000:  # Terminate if score gets too high
+            return self._get_observation(), 0.0, True, False, {'terminated': 'max_score_reached'}
         
         # Validate action
         if not self._is_valid_action(action):
@@ -656,6 +667,10 @@ class BalatroEnv(gym.Env):
             return self._step_blind_select(action)
         elif self.state.phase == Phase.PACK_OPEN:
             return self._step_pack_open(action)
+        return self._get_observation(), -1.0, True, False, {
+            'error': f'Unhandled phase: {self.state.phase!r}',
+            'phase': getattr(self.state.phase, 'name', str(self.state.phase)),
+        }
 
     def _step_play(self, action: int):
         """Handle playing phase actions with unified scoring and enhanced reward shaping"""
@@ -1148,21 +1163,35 @@ class BalatroEnv(gym.Env):
                 for affected in result['cards_affected']:
                     if hasattr(affected, 'card_idx'):
                         card_idx = affected.card_idx
+                        if 0 <= card_idx < len(self.state.deck):
+                            self.state.deck[card_idx] = CardAdapter.from_game_card(affected)
                         # Get or create card state
                         if card_idx not in self.state.card_states:
                             self.state.card_states[card_idx] = CardState(card_idx)
                         
                         # Update properties
                         if hasattr(affected, 'enhancement'):
-                            self.state.card_states[card_idx].enhancement = affected.enhancement
+                            self.state.card_states[card_idx].enhancement = Enhancement(int(affected.enhancement))
                         if hasattr(affected, 'edition'):
-                            self.state.card_states[card_idx].edition = affected.edition
+                            self.state.card_states[card_idx].edition = Edition(int(affected.edition))
                         if hasattr(affected, 'seal'):
-                            self.state.card_states[card_idx].seal = affected.seal
+                            self.state.card_states[card_idx].seal = Seal(int(affected.seal))
                 reward += len(result['cards_affected']) * 2.0
                 
             if result.get('cards_created'):
-                reward += len(result['cards_created']) * 3.0
+                created_cards = result['cards_created']
+                first_created_idx = len(self.state.deck) - len(created_cards)
+                for offset, created_card in enumerate(created_cards):
+                    deck_idx = first_created_idx + offset
+                    if 0 <= deck_idx < len(self.state.deck):
+                        self.state.deck[deck_idx] = CardAdapter.from_game_card(created_card)
+                        self.state.card_states[deck_idx] = CardState(
+                            deck_idx,
+                            enhancement=Enhancement(int(getattr(created_card, 'enhancement', Enhancement.NONE))),
+                            edition=Edition(int(getattr(created_card, 'edition', Edition.NONE))),
+                            seal=Seal(int(getattr(created_card, 'seal', Seal.NONE))),
+                        )
+                reward += len(created_cards) * 3.0
                 
             if result.get('cards_destroyed'):
                 reward += len(result['cards_destroyed']) * 1.0
@@ -1186,6 +1215,8 @@ class BalatroEnv(gym.Env):
             if result.get('hand_size_change'):
                 self.state.hand_size += result['hand_size_change']
                 self.game.hand_size = self.state.hand_size
+
+            self.state.deck = [CardAdapter.from_game_card(card) for card in self.state.deck]
                 
             info['result'] = result['message']
         else:
@@ -1227,7 +1258,7 @@ class BalatroEnv(gym.Env):
             joker_idx = action - Action.SELL_JOKER_BASE
             if 0 <= joker_idx < len(self.state.jokers):
                 sold_joker = self.state.jokers.pop(joker_idx)
-                sell_value = max(3, sold_joker.base_cost // 2)
+                sell_value = joker_sell_value(sold_joker.base_cost)
                 self.state.money += sell_value
                 self.state.jokers_sold += 1
                 

@@ -102,7 +102,7 @@ class CombatActionWrapper:
         self,
         card_selections: np.ndarray,
         execution: int,
-    ) -> Tuple[dict, float, bool, bool, dict]:
+    ) -> Tuple[dict, float, bool, dict]:
         """Execute a factored combat action.
 
         Internally toggles card selections to match the desired state, then
@@ -115,46 +115,44 @@ class CombatActionWrapper:
             execution:       0 = play, 1 = discard.
 
         Returns:
-            ``(obs, reward, terminated, truncated, info)`` tuple.
+            ``(obs, reward, done, info)`` tuple.
         """
         n_selected = int(card_selections.sum())
         if n_selected < 1 or n_selected > 5:
-            return self._last_obs, -1.0, False, False, {
+            return self._last_obs, -1.0, False, {
                 'error': f'Invalid selection count: {n_selected}'}
 
         current_sel = self._last_obs['hand_is_selected']
         to_toggle = np.where(card_selections != current_sel)[0]
 
+        total_reward = 0.0
         obs = self._last_obs
-        terminated = False
-        truncated = False
+        done = False
         info: dict = {}
 
         for idx in to_toggle:
             if idx >= SELECT_CARD_COUNT:
                 continue
             action = get_wrapper_select_action(int(idx))
-            obs, r, terminated, truncated, info = self.env.step(action)
-            if terminated or truncated:
+            obs, r, done, _, info = self.env.step(action)
+            total_reward += r
+            if done:
                 self._last_obs = obs
-                return obs, r, terminated, truncated, info
-            if r != 0.0:
-                raise RuntimeError(
-                    f'SELECT_CARD action {action} returned unexpected reward {r}.'
-                )
+                return obs, total_reward, True, info
 
         exec_action = (int(WrapperAction.PLAY_HAND) if execution == 0
                        else int(WrapperAction.DISCARD))
-        obs, reward, terminated, truncated, info = self.env.step(exec_action)
+        obs, r, done, _, info = self.env.step(exec_action)
+        total_reward += r
 
-        if not terminated and not truncated:
+        if not done:
             phase = GamePhase(int(obs['phase']))
             if phase != GamePhase.COMBAT:
-                terminated = True
+                done = True
                 info['combat_ended'] = True
 
         self._last_obs = obs
-        return obs, reward, terminated, truncated, info
+        return obs, total_reward, done, info
 
     def close(self) -> None:
         """Close the underlying environment."""

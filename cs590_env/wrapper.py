@@ -15,6 +15,7 @@ import gymnasium as gym
 
 from balatro_gym.balatro_env_2 import BalatroEnv, get_blind_chips
 from balatro_gym.constants import Phase, Action
+from balatro_gym.jokers import joker_sell_value
 from balatro_gym.scoring_engine import HandType
 
 from cs590_env.schema import (
@@ -43,7 +44,6 @@ _BLIND_KEYS = ('small', 'big', 'boss')
 # Combat pass-reward shaping:
 #   reward = coefficient * (plays_remaining + log10(score)) * 1_pass
 COMBAT_PASS_REWARD_COEFFICIENT = 2.0
-COMBAT_PASS_REWARD_SCORE_FLOOR = 1.0
 
 
 def compute_combat_pass_reward(
@@ -68,17 +68,13 @@ def compute_combat_pass_reward(
     if not passed:
         return 0.0
 
-    safe_score = max(COMBAT_PASS_REWARD_SCORE_FLOOR, float(score))
-    if not np.isfinite(safe_score):
-        raise ValueError(f'combat reward score must be finite, got {score!r}')
-
-    reward = coefficient * (max(0, int(plays_remaining)) + float(np.log10(safe_score)))
-    if not np.isfinite(reward):
-        raise ValueError(
-            'combat reward became non-finite for '
-            f'plays_remaining={plays_remaining}, score={score!r}'
+    reward_score = float(score)
+    if reward_score <= 0.0:
+        raise AssertionError(
+            f"passed combat reward requires positive score, got {reward_score}"
         )
-    return reward
+
+    return coefficient * (int(plays_remaining) + float(np.log10(reward_score)))
 
 
 class BalatroPhaseWrapper(gym.Wrapper):
@@ -156,7 +152,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
                 info=info,
             )
             info['translated_action'] = action
-            if not terminated and not truncated:
+            if not terminated:
                 self._auto_skip_pack_open()
 
         cur_phase = self._game_phase
@@ -215,7 +211,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
         joker_empty = np.ones(MAX_JOKER_DISPLAY, dtype=np.int8)
         for i, j in enumerate(s.jokers[:MAX_JOKER_DISPLAY]):
             joker_ids[i] = j.id
-            joker_sell[i] = max(3, j.base_cost // 2)
+            joker_sell[i] = joker_sell_value(j.base_cost)
             joker_empty[i] = 0
 
         # Consumable tokens — pad to MAX_CONSUMABLE_DISPLAY
@@ -597,7 +593,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
         base_reward: float,
         info: dict,
     ) -> float:
-        """Override combat rewards with wrapper-specific shaping.
+        """Override PLAY_HAND reward with the wrapper's explicit pass formula.
 
         Args:
             action: Action ID that was executed in the base env.
@@ -607,48 +603,33 @@ class BalatroPhaseWrapper(gym.Wrapper):
             info: Mutable step info dict from the base env.
 
         Returns:
-            The wrapper reward to expose for this step. Non-combat actions keep
-            the original ``base_reward`` unchanged.
+            The wrapper reward to expose for this step. Non-combat or non-play
+            actions keep the original ``base_reward`` unchanged.
         """
-        if previous_phase != GamePhase.COMBAT:
+        if previous_phase != GamePhase.COMBAT or action != int(WrapperAction.PLAY_HAND):
             return base_reward
 
-        if action == int(WrapperAction.PLAY_HAND):
-            passed = bool(info.get('beat_blind', False))
-            score = float(info.get('final_score', 0.0))
-            plays_remaining = max(0, hands_before_play - 1)
-            combat_reward = compute_combat_pass_reward(
-                plays_remaining=plays_remaining,
-                score=score,
-                passed=passed,
-            )
+        passed = bool(info.get('beat_blind', False))
+        score = float(info.get('final_score', 0.0))
+        plays_remaining = hands_before_play - 1
+        combat_reward = compute_combat_pass_reward(
+            plays_remaining=plays_remaining,
+            score=score,
+            passed=passed,
+        )
 
-            info['base_reward'] = base_reward
-            info['wrapper_reward_formula'] = (
-                '2 * (plays_remaining + log10(score)) * 1_pass'
-            )
-            info['wrapper_reward_breakdown'] = {
-                'coefficient': COMBAT_PASS_REWARD_COEFFICIENT,
-                'plays_remaining': plays_remaining,
-                'score': score,
-                'pass_indicator': int(passed),
-                'combat_reward': combat_reward,
-            }
-            return combat_reward
-
-        if action == int(WrapperAction.DISCARD):
-            info['base_reward'] = base_reward
-            info['wrapper_reward_formula'] = '0.0 (discard shaping disabled)'
-            info['wrapper_reward_breakdown'] = {
-                'coefficient': 0.0,
-                'plays_remaining': None,
-                'score': None,
-                'pass_indicator': 0,
-                'combat_reward': 0.0,
-            }
-            return 0.0
-
-        return base_reward
+        info['base_reward'] = base_reward
+        info['wrapper_reward_formula'] = (
+            '2 * (plays_remaining + log10(score)) * 1_pass'
+        )
+        info['wrapper_reward_breakdown'] = {
+            'coefficient': COMBAT_PASS_REWARD_COEFFICIENT,
+            'plays_remaining': plays_remaining,
+            'score': score,
+            'pass_indicator': int(passed),
+            'combat_reward': combat_reward,
+        }
+        return combat_reward
 
     # ── Individual action handlers ────────────────────────────────────────
 
@@ -681,7 +662,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
         s = self._state
         if 0 <= idx < len(s.jokers):
             sold = s.jokers.pop(idx)
-            sell_value = max(3, sold.base_cost // 2)
+            sell_value = joker_sell_value(sold.base_cost)
             s.money += sell_value
             s.jokers_sold += 1
             return sell_value / 5.0, {'sold_joker': sold.name, 'sell_value': sell_value}

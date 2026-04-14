@@ -160,3 +160,27 @@ JOKER_LIBRARY: List[JokerInfo] = [
     JokerInfo(149,"Chicot",0,"Disable every boss"),
     JokerInfo(150,"Perkeo",0,"Negative copy consumable"),
 ]
+
+
+def joker_sell_value(base_cost: int) -> int:
+    """Return the money gained when selling a joker.
+
+    Args:
+        base_cost: The joker's shop base cost. ``0`` is preserved as a
+            sentinel for special jokers that should not masquerade as a
+            minimum-price sell.
+
+    Returns:
+        The explicit sell value implied by ``base_cost`` using floor division.
+
+    Raises:
+        ValueError: If ``base_cost`` is missing or negative.
+    """
+    if base_cost is None:
+        raise ValueError("joker base_cost must be set before computing sell value")
+
+    sell_base_cost = int(base_cost)
+    if sell_base_cost < 0:
+        raise ValueError(f"joker base_cost must be non-negative, got {sell_base_cost}")
+
+    return sell_base_cost // 2
