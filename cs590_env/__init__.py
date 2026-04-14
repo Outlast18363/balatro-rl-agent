@@ -44,7 +44,12 @@ from cs590_env.combat_env import (
     mask_logits,
 )
 from balatro_gym.save_injection import load_snapshot_pool
-from cs590_env.util import print_combat_state
+from cs590_env.util import (
+    print_combat_state,
+    load_combat_ppo_agent,
+    combat_obs_policy_action,
+    run_weight_interpreter,
+)
 
 __all__ = [
     'BalatroPhaseWrapper',
@@ -64,4 +69,7 @@ __all__ = [
     'mask_logits',
     'load_snapshot_pool',
     'print_combat_state',
+    'load_combat_ppo_agent',
+    'combat_obs_policy_action',
+    'run_weight_interpreter',
 ]

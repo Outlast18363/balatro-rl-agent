@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from enum import IntEnum
+from pathlib import Path
 from typing import Any, TextIO
 
 import numpy as np
@@ -276,3 +277,221 @@ def print_combat_state(
         print(f"  {name:14s}  id={hid}  lvl={lvl:3d}  chips={ch:5d}  mult={mult:3d}", file=file)
 
     print("", file=file)
+
+
+def _ppo_hparams_from_checkpoint(ckpt: dict[str, Any]) -> dict[str, Any]:
+    """Read ``d_model`` / ``nhead`` / ``dim_ff`` / ``dropout`` from a TrainCombat-style checkpoint."""
+    defaults = {"d_model": 256, "nhead": 8, "dim_ff": 1024, "dropout": 0.1}
+    cfg = ckpt.get("config")
+    if cfg is None:
+        return defaults
+    if isinstance(cfg, dict):
+        return {k: type(defaults[k])(cfg.get(k, defaults[k])) for k in defaults}
+    for k in defaults:
+        if hasattr(cfg, k):
+            defaults[k] = getattr(cfg, k)
+    return {k: int(defaults[k]) if k != "dropout" else float(defaults[k]) for k in defaults}
+
+
+def load_combat_ppo_agent(
+    checkpoint_path: str | Path,
+    *,
+    device: str | None = None,
+    map_location: str | None = None,
+) -> tuple[Any, dict[str, Any]]:
+    """Load ``CombatPPOAgent`` weights from a ``.pt`` file (e.g. ``TrainCombat.ipynb`` checkpoints).
+
+    Expected keys: ``model_state_dict``, optionally ``config``, ``iteration``.
+
+    Returns:
+        ``(agent, meta)`` where ``meta`` includes ``iteration``, ``config``, and ``path``.
+    """
+    import torch
+
+    from cs590_src.combat_agent_model import CombatPPOAgent
+
+    path = Path(checkpoint_path)
+    loc = map_location or device or ("cuda" if torch.cuda.is_available() else "cpu")
+    try:
+        ckpt = torch.load(path, map_location=loc, weights_only=False)
+    except TypeError:
+        ckpt = torch.load(path, map_location=loc)
+
+    hp = _ppo_hparams_from_checkpoint(ckpt)
+    agent = CombatPPOAgent(
+        d_model=hp["d_model"],
+        nhead=hp["nhead"],
+        dim_ff=hp["dim_ff"],
+        dropout=hp["dropout"],
+    )
+    agent.load_state_dict(ckpt["model_state_dict"])
+    dev = torch.device(device or loc)
+    agent.to(dev)
+    agent.eval()
+    meta: dict[str, Any] = {
+        "path": path,
+        "iteration": ckpt.get("iteration"),
+        "config": ckpt.get("config"),
+        "device": dev,
+        "hparams": hp,
+    }
+    return agent, meta
+
+
+def _obs_numpy_to_torch_batch(
+    obs: dict[str, np.ndarray],
+    device: Any,
+) -> dict[str, Any]:
+    """Add batch dimension ``B=1`` for every observation tensor."""
+    import torch
+
+    out: dict[str, Any] = {}
+    for k, v in obs.items():
+        t = torch.as_tensor(np.asarray(v), device=device)
+        if t.dim() == 0:
+            out[k] = t.unsqueeze(0)
+        else:
+            out[k] = t.unsqueeze(0)
+    return out
+
+
+def combat_obs_policy_action(
+    agent: Any,
+    obs: dict[str, np.ndarray],
+    *,
+    device: Any,
+    deterministic: bool = True,
+) -> tuple[np.ndarray, int]:
+    """Map a single-env combat observation to factored action (card mask + execution).
+
+    Returns:
+        ``(card_selections, execution)`` with ``card_selections`` shape ``(MAX_HAND_SIZE,)``
+        int8 in ``{0,1}``, ``execution`` ``0`` = play, ``1`` = discard.
+    """
+    import torch
+    from torch.distributions import Categorical
+
+    from cs590_env.combat_env import get_card_mask, mask_logits
+
+    obs_t = _obs_numpy_to_torch_batch(obs, device)
+    with torch.no_grad():
+        sel_logits, exec_logits, _values = agent(obs_t)
+    card_mask = get_card_mask(obs_t)
+    sel_logits = mask_logits(sel_logits, card_mask)
+
+    if deterministic:
+        card_sels = sel_logits.argmax(dim=-1).squeeze(0)
+        execution = int(exec_logits.argmax(dim=-1).squeeze(0).item())
+    else:
+        sel_dist = Categorical(logits=sel_logits)
+        exec_dist = Categorical(logits=exec_logits)
+        card_sels = sel_dist.sample().squeeze(0)
+        execution = int(exec_dist.sample().item())
+
+    card_np = card_sels.cpu().numpy().astype(np.int8)
+    return card_np, execution
+
+
+def run_weight_interpreter(
+    combat: Any,
+    checkpoint_path: str | Path,
+    *,
+    device: str | None = None,
+    deterministic: bool = True,
+    max_steps: int = 512,
+    env_index: int = 0,
+    initial_obs: dict[str, np.ndarray] | None = None,
+    print_policy_line: bool = True,
+    file: TextIO | None = None,
+) -> dict[str, Any]:
+    """Run the loaded combat policy until the combat episode ends, printing each observation.
+
+    Uses the same factored action space as training: ``CombatActionWrapper.step`` with
+    1–5 cards selected, then play (0) or discard (1). Stops when the wrapper reports
+    ``done`` (blind cleared, run out of hands, or left combat phase).
+
+    Args:
+        combat: A ``CombatActionWrapper`` instance, or a ``PooledCombatEnv`` (uses ``._combat``).
+        checkpoint_path: ``torch.save`` file with ``model_state_dict`` (and optional ``config``).
+        device: Torch device string; default follows CUDA availability.
+        deterministic: If True, argmax on policy logits; else sample from the same distributions as PPO.
+        max_steps: Safety cap on policy steps (each step = one play or discard attempt after toggles).
+        env_index: Row printed when observations are batched.
+        initial_obs: If set, assigned to ``combat._last_obs`` before the first printed step.
+        print_policy_line: If True, print play/discard and selected slot indices after each state.
+        file: Text stream for prints (default ``sys.stdout``).
+
+    Returns:
+        Summary dict with ``steps``, ``total_reward``, ``done``, ``reason``, ``last_info``.
+    """
+    from cs590_env.combat_wrapper import CombatActionWrapper
+
+    if file is None:
+        file = sys.stdout
+
+    if isinstance(combat, CombatActionWrapper):
+        wrap = combat
+    else:
+        inner = getattr(combat, "_combat", None)
+        if not isinstance(inner, CombatActionWrapper):
+            raise TypeError(
+                "combat must be CombatActionWrapper or PooledCombatEnv with ._combat wrapper"
+            )
+        wrap = inner
+
+    if initial_obs is not None:
+        wrap._last_obs = initial_obs
+
+    if wrap._last_obs is None:
+        raise RuntimeError("No observation to start from: set combat._last_obs or pass initial_obs=")
+
+    agent, meta = load_combat_ppo_agent(checkpoint_path, device=device)
+    dev = meta["device"]
+
+    total_reward = 0.0
+    last_info: dict[str, Any] = {}
+    reason = "max_steps"
+    done = False
+    obs: dict[str, np.ndarray] = wrap._last_obs
+    step_count = 0
+
+    for t in range(max_steps):
+        print(f"\n=== weight interpreter step {t} ===", file=file)
+        print_combat_state(wrap._last_obs, env_index=env_index, file=file)
+
+        card_sel, execution = combat_obs_policy_action(
+            agent, wrap._last_obs, device=dev, deterministic=deterministic,
+        )
+        if print_policy_line:
+            slots = np.flatnonzero(card_sel).tolist()
+            mode = "discard" if execution else "play"
+            print(f"  policy → {mode}  cards={slots}  (n={len(slots)})", file=file)
+
+        obs, reward, done, info = wrap.step(card_sel, execution)
+        step_count += 1
+        total_reward += float(reward)
+        last_info = dict(info) if info else {}
+
+        if "error" in last_info:
+            reason = "invalid_action"
+            break
+        if done:
+            reason = "terminal"
+            break
+
+    if reason == "max_steps" and not done:
+        print(f"\n[run_weight_interpreter] stopped after {max_steps} steps (not terminal)", file=file)
+
+    if done:
+        print(f"\n=== weight interpreter final ({reason}) ===", file=file)
+        print_combat_state(obs, env_index=env_index, file=file)
+
+    return {
+        "steps": step_count,
+        "total_reward": total_reward,
+        "done": done,
+        "reason": reason,
+        "last_info": last_info,
+        "checkpoint": str(Path(checkpoint_path)),
+        "device": str(dev),
+    }
