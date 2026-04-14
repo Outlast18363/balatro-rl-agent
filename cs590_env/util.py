@@ -312,6 +312,17 @@ def load_combat_ppo_agent(
 
     path = Path(checkpoint_path)
     loc = map_location or device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+    # TrainCombat saves ``cfg`` as a dataclass defined under ``__main__`` when
+    # ``%run BalatroPPO.ipynb`` — unpickling elsewhere fails unless ``__main__``
+    # exposes a compatible ``PPOConfig`` (see cs590_src.ppo_config).
+    import __main__ as _main
+
+    if not hasattr(_main, "PPOConfig"):
+        from cs590_src.ppo_config import PPOConfig as _PPOConfig
+
+        _main.PPOConfig = _PPOConfig
+
     try:
         ckpt = torch.load(path, map_location=loc, weights_only=False)
     except TypeError:
