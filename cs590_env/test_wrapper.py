@@ -13,6 +13,8 @@ import pytest
 import numpy as np
 
 from balatro_gym.balatro_env_2 import BalatroEnv
+from balatro_gym.boss_blinds import BOSS_BLINDS, BossBlindType, is_card_debuffed_by_blind
+from balatro_gym.cards import Card, Rank, Suit
 from balatro_gym.constants import Action
 from balatro_gym.jokers import JokerInfo
 
@@ -206,6 +208,42 @@ class TestCombatMask:
         mask = obs['action_mask']
         for i in range(3):
             assert mask[WrapperAction.SELECT_BLIND_BASE + i] == 0
+
+
+class TestBossBlindDebuffs:
+    def test_suit_debuff_helper_matches_card_suit_enum(self):
+        """Suit-based boss blinds should work with ``Card.suit`` enum values."""
+        club_card = Card(rank=Rank.TWO, suit=Suit.CLUBS)
+        spade_card = Card(rank=Rank.THREE, suit=Suit.SPADES)
+
+        assert is_card_debuffed_by_blind(club_card, BossBlindType.THE_CLUB)
+        assert not is_card_debuffed_by_blind(spade_card, BossBlindType.THE_CLUB)
+
+    def test_combat_obs_marks_debuffed_hand_slots_for_active_boss(self, env):
+        """Combat observations should expose the active boss-debuff mask."""
+        env.reset()
+        _enter_combat(env)
+
+        first_idx = env.env.state.hand_indexes[0]
+        second_idx = env.env.state.hand_indexes[1]
+        env.env.state.deck[first_idx] = Card(rank=Rank.TWO, suit=Suit.CLUBS)
+        env.env.state.deck[second_idx] = Card(rank=Rank.THREE, suit=Suit.SPADES)
+        env.env.state.active_boss_blind = BossBlindType.THE_CLUB
+        env.env.state.boss_blind_active = True
+        env.env.boss_blind_manager.active_blind = BOSS_BLINDS[BossBlindType.THE_CLUB]
+        env.env.boss_blind_manager.blind_state = {}
+
+        obs = env._get_phase_observation()
+        expected_mask = np.zeros(MAX_HAND_SIZE, dtype=np.int8)
+        for slot, deck_idx in enumerate(env.env.state.hand_indexes[:MAX_HAND_SIZE]):
+            if env.env.state.deck[deck_idx].suit == Suit.CLUBS:
+                expected_mask[slot] = 1
+
+        assert obs['boss_is_active'] == 1
+        assert obs['boss_id'] == BossBlindType.THE_CLUB
+        assert obs['hand_is_debuffed'][0] == 1
+        assert obs['hand_is_debuffed'][1] == 0
+        assert np.array_equal(obs['hand_is_debuffed'], expected_mask)
 
 
 # ─── Shop masking ─────────────────────────────────────────────────────────────

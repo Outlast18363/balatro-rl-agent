@@ -14,6 +14,7 @@ import numpy as np
 import gymnasium as gym
 
 from balatro_gym.balatro_env_2 import BalatroEnv, get_blind_chips
+from balatro_gym.boss_blinds import is_card_debuffed_by_blind
 from balatro_gym.constants import Phase, Action
 from balatro_gym.jokers import joker_sell_value
 from balatro_gym.scoring_engine import HandType
@@ -333,6 +334,30 @@ class BalatroPhaseWrapper(gym.Wrapper):
             'deck_card_seals':        np.zeros(MAX_DECK_SIZE, dtype=np.int8),
         }
 
+    def _build_hand_debuff_mask(self) -> np.ndarray:
+        """Build the hand-slot boss-debuff mask for combat observations.
+
+        Returns:
+            ``(MAX_HAND_SIZE,)`` int8 array with 1 for debuffed cards and 0
+            otherwise.
+        """
+        s = self._state
+        debuffed = np.zeros(MAX_HAND_SIZE, dtype=np.int8)
+        if not s.boss_blind_active or s.active_boss_blind is None:
+            return debuffed
+
+        blind_state = {}
+        if getattr(self.env, 'boss_blind_manager', None) is not None:
+            blind_state = self.env.boss_blind_manager.blind_state
+
+        for slot, deck_idx in enumerate(s.hand_indexes[:MAX_HAND_SIZE]):
+            if deck_idx >= len(s.deck):
+                continue
+            if is_card_debuffed_by_blind(s.deck[deck_idx], s.active_boss_blind, blind_state):
+                debuffed[slot] = 1
+
+        return debuffed
+
     # ── Per-phase builders ────────────────────────────────────────────────
 
     def _build_transition_obs(self) -> dict:
@@ -410,7 +435,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
         obs['hand_card_seals']        = card_seal
         obs['hand_is_face_down']      = face_down
         obs['hand_is_selected']       = selected
-        # hand_is_debuffed: placeholder zeros – needs boss-blind derivation
+        obs['hand_is_debuffed']       = self._build_hand_debuff_mask()
         obs['current_score']          = np.int64(s.round_chips_scored)
         obs['target_score']           = np.int64(s.chips_needed)
         obs['hand_size']              = np.int16(len(s.hand_indexes))

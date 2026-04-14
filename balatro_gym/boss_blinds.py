@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass
 import random
 
+from balatro_gym.cards import Suit
+
 # ---------------------------------------------------------------------------
 # Boss Blind Types
 # ---------------------------------------------------------------------------
@@ -294,6 +296,78 @@ BOSS_BLINDS: Dict[BossBlindType, BossBlind] = {
     ),
 }
 
+_SUIT_DEBUFF_BLINDS = {
+    BossBlindType.THE_GOAD: Suit.SPADES,
+    BossBlindType.THE_WINDOW: Suit.DIAMONDS,
+    BossBlindType.THE_HEAD: Suit.HEARTS,
+    BossBlindType.THE_CLUB: Suit.CLUBS,
+}
+
+_SUIT_NAME_TO_ENUM = {
+    'clubs': Suit.CLUBS,
+    'diamonds': Suit.DIAMONDS,
+    'hearts': Suit.HEARTS,
+    'spades': Suit.SPADES,
+}
+
+
+def _normalize_card_suit(card_suit: Any) -> Optional[Suit]:
+    """Normalize suit values from enums, ints, or legacy strings.
+
+    Args:
+        card_suit: Suit-like value attached to a card object.
+
+    Returns:
+        Parsed ``Suit`` enum, or ``None`` when the value is not recognized.
+    """
+    if isinstance(card_suit, Suit):
+        return card_suit
+
+    if isinstance(card_suit, str):
+        return _SUIT_NAME_TO_ENUM.get(card_suit.strip().lower())
+
+    try:
+        return Suit(card_suit)
+    except (TypeError, ValueError):
+        return None
+
+
+def is_card_debuffed_by_blind(
+    card: Any,
+    blind_type: Optional[BossBlindType],
+    blind_state: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Check whether a card is debuffed by the supplied boss blind.
+
+    Args:
+        card: Card-like object with suit/rank fields and an optional ``id``.
+        blind_type: Active boss blind, or ``None`` when no boss is active.
+        blind_state: Runtime boss state used by stateful debuffs like Pillar.
+
+    Returns:
+        ``True`` when the card should be treated as debuffed, else ``False``.
+    """
+    if blind_type is None:
+        return False
+
+    target_suit = _SUIT_DEBUFF_BLINDS.get(blind_type)
+    if target_suit is not None:
+        if _normalize_card_suit(getattr(card, 'suit', None)) == target_suit:
+            return True
+
+    if blind_type == BossBlindType.THE_PLANT and getattr(card, 'rank', None) in [11, 12, 13]:
+        return True
+
+    if blind_type == BossBlindType.THE_VIOLET:
+        return True
+
+    if blind_type == BossBlindType.THE_PILLAR:
+        card_id = getattr(card, 'id', None) or id(card)
+        if card_id in (blind_state or {}).get('played_cards', set()):
+            return True
+
+    return False
+
 # ---------------------------------------------------------------------------
 # Boss Blind Manager
 # ---------------------------------------------------------------------------
@@ -445,37 +519,16 @@ class BossBlindManager:
         return chips, mult
     
     def _is_card_debuffed(self, card) -> bool:
-        """Check if a card is debuffed by current boss blind"""
-        if not self.active_blind:
-            return False
-            
-        # Suit debuffs
-        if hasattr(card, 'suit'):
-            if self.active_blind.blind_type == BossBlindType.THE_GOAD and card.suit == 'Spades':
-                return True
-            elif self.active_blind.blind_type == BossBlindType.THE_WINDOW and card.suit == 'Diamonds':
-                return True
-            elif self.active_blind.blind_type == BossBlindType.THE_HEAD and card.suit == 'Hearts':
-                return True
-            elif self.active_blind.blind_type == BossBlindType.THE_CLUB and card.suit == 'Clubs':
-                return True
-                
-        # Rank debuffs
-        if hasattr(card, 'rank'):
-            if self.active_blind.blind_type == BossBlindType.THE_PLANT and card.rank in [11, 12, 13]:
-                return True
-                
-        # Universal debuffs
-        if self.active_blind.blind_type == BossBlindType.THE_VIOLET:
-            return True
-            
-        # Previously played cards
-        if self.active_blind.blind_type == BossBlindType.THE_PILLAR:
-            card_id = getattr(card, 'id', None) or id(card)
-            if card_id in self.blind_state.get('played_cards', set()):
-                return True
-        
-        return False
+        """Check if a card is debuffed by the currently active boss blind.
+
+        Args:
+            card: Card-like object to inspect.
+
+        Returns:
+            ``True`` when the active blind debuffs the card, else ``False``.
+        """
+        blind_type = self.active_blind.blind_type if self.active_blind else None
+        return is_card_debuffed_by_blind(card, blind_type, self.blind_state)
     
     def on_hand_scored(self, played_cards: List[Any], hand_type: str, game_state: Dict):
         """Update state after hand is scored"""
