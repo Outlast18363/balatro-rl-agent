@@ -636,12 +636,12 @@ class BalatroEnv(gym.Env):
 
     def step(self, action: int):
         """Execute action and return step results"""
-        # Check for termination conditions
-        if self.state.ante > 100:  # Terminate after ante 100
-            return self._get_observation(), 0.0, True, False, {'terminated': 'max_ante_reached'}
-        
-        if self.state.chips_scored > 1_000_000_000:  # Terminate if score gets too high
-            return self._get_observation(), 0.0, True, False, {'terminated': 'max_score_reached'}
+        # Treat hard environment ceilings as truncation so GAE can bootstrap.
+        if self.state.ante > 100:
+            return self._get_observation(), 0.0, False, True, {'truncated': 'max_ante_reached'}
+
+        if self.state.chips_scored > 1_000_000_000:
+            return self._get_observation(), 0.0, False, True, {'truncated': 'max_score_reached'}
         
         # Validate action
         if not self._is_valid_action(action):

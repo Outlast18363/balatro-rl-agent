@@ -69,7 +69,16 @@ def compute_combat_pass_reward(
         return 0.0
 
     safe_score = max(COMBAT_PASS_REWARD_SCORE_FLOOR, float(score))
-    return coefficient * (max(0, int(plays_remaining)) + float(np.log10(safe_score)))
+    if not np.isfinite(safe_score):
+        raise ValueError(f'combat reward score must be finite, got {score!r}')
+
+    reward = coefficient * (max(0, int(plays_remaining)) + float(np.log10(safe_score)))
+    if not np.isfinite(reward):
+        raise ValueError(
+            'combat reward became non-finite for '
+            f'plays_remaining={plays_remaining}, score={score!r}'
+        )
+    return reward
 
 
 class BalatroPhaseWrapper(gym.Wrapper):
@@ -147,7 +156,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
                 info=info,
             )
             info['translated_action'] = action
-            if not terminated:
+            if not terminated and not truncated:
                 self._auto_skip_pack_open()
 
         cur_phase = self._game_phase
@@ -264,7 +273,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
         """
         ranks = np.zeros(NUM_RANKS, dtype=np.int8)
         suits = np.zeros(NUM_SUITS, dtype=np.int8)
-        card_ids = np.full(MAX_DECK_SIZE, -1, dtype=np.int8)
+        card_ids = np.full(MAX_DECK_SIZE, -1, dtype=np.int16)
         card_enh = np.zeros(MAX_DECK_SIZE, dtype=np.int8)
         card_ed = np.zeros(MAX_DECK_SIZE, dtype=np.int8)
         card_seal = np.zeros(MAX_DECK_SIZE, dtype=np.int8)
@@ -296,20 +305,20 @@ class BalatroPhaseWrapper(gym.Wrapper):
         return {
             # Transition
             'blind_type':             np.int8(0),
-            'target_score':           np.int32(0),
+            'target_score':           np.int64(0),
             'blind_reward':           np.int32(0),
             # Combat
-            'hand_card_ids':          np.full(MAX_HAND_SIZE, -1, dtype=np.int8),
+            'hand_card_ids':          np.full(MAX_HAND_SIZE, -1, dtype=np.int16),
             'hand_card_enhancements': np.zeros(MAX_HAND_SIZE, dtype=np.int8),
             'hand_card_editions':     np.zeros(MAX_HAND_SIZE, dtype=np.int8),
             'hand_card_seals':        np.zeros(MAX_HAND_SIZE, dtype=np.int8),
             'hand_is_face_down':      np.zeros(MAX_HAND_SIZE, dtype=np.int8),
             'hand_is_selected':       np.zeros(MAX_HAND_SIZE, dtype=np.int8),
             'hand_is_debuffed':       np.zeros(MAX_HAND_SIZE, dtype=np.int8),
-            'current_score':          np.int32(0),
-            'hand_size':              np.int8(0),
-            'hands_remaining':        np.int8(0),
-            'discards_remaining':     np.int8(0),
+            'current_score':          np.int64(0),
+            'hand_size':              np.int16(0),
+            'hands_remaining':        np.int16(0),
+            'discards_remaining':     np.int16(0),
             'hands_played_round':     np.int32(0),
             'boss_id':                np.int8(0),
             'boss_is_active':         np.int8(0),
@@ -322,7 +331,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
             # Deck
             'deck_ranks':             np.zeros(NUM_RANKS, dtype=np.int8),
             'deck_suits':             np.zeros(NUM_SUITS, dtype=np.int8),
-            'deck_card_ids':          np.full(MAX_DECK_SIZE, -1, dtype=np.int8),
+            'deck_card_ids':          np.full(MAX_DECK_SIZE, -1, dtype=np.int16),
             'deck_card_enhancements': np.zeros(MAX_DECK_SIZE, dtype=np.int8),
             'deck_card_editions':     np.zeros(MAX_DECK_SIZE, dtype=np.int8),
             'deck_card_seals':        np.zeros(MAX_DECK_SIZE, dtype=np.int8),
@@ -350,7 +359,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
         blind_reward = 25 * next_round + (10 if next_round == 3 else 0)
 
         obs['blind_type']   = np.int8(s.round)
-        obs['target_score'] = np.int32(target)
+        obs['target_score'] = np.int64(target)
         obs['blind_reward'] = np.int32(blind_reward)
 
         ranks, suits, card_ids, card_enh, card_ed, card_seal = self._build_deck_info(
@@ -378,7 +387,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
         s = self._state
 
         # Hand card tokens
-        card_ids = np.full(MAX_HAND_SIZE, -1, dtype=np.int8)
+        card_ids = np.full(MAX_HAND_SIZE, -1, dtype=np.int16)
         card_enh = np.zeros(MAX_HAND_SIZE, dtype=np.int8)
         card_ed  = np.zeros(MAX_HAND_SIZE, dtype=np.int8)
         card_seal = np.zeros(MAX_HAND_SIZE, dtype=np.int8)
@@ -406,11 +415,11 @@ class BalatroPhaseWrapper(gym.Wrapper):
         obs['hand_is_face_down']      = face_down
         obs['hand_is_selected']       = selected
         # hand_is_debuffed: placeholder zeros – needs boss-blind derivation
-        obs['current_score']          = np.int32(s.round_chips_scored)
-        obs['target_score']           = np.int32(s.chips_needed)
-        obs['hand_size']              = np.int8(len(s.hand_indexes))
-        obs['hands_remaining']        = np.int8(s.hands_left)
-        obs['discards_remaining']     = np.int8(s.discards_left)
+        obs['current_score']          = np.int64(s.round_chips_scored)
+        obs['target_score']           = np.int64(s.chips_needed)
+        obs['hand_size']              = np.int16(len(s.hand_indexes))
+        obs['hands_remaining']        = np.int16(s.hands_left)
+        obs['discards_remaining']     = np.int16(s.discards_left)
         obs['hands_played_round']     = np.int32(s.hands_played_ante)
         obs['boss_id']                = np.int8(
             s.active_boss_blind.value if s.active_boss_blind else 0)
@@ -588,7 +597,7 @@ class BalatroPhaseWrapper(gym.Wrapper):
         base_reward: float,
         info: dict,
     ) -> float:
-        """Override PLAY_HAND reward with the wrapper's explicit pass formula.
+        """Override combat rewards with wrapper-specific shaping.
 
         Args:
             action: Action ID that was executed in the base env.
@@ -598,33 +607,48 @@ class BalatroPhaseWrapper(gym.Wrapper):
             info: Mutable step info dict from the base env.
 
         Returns:
-            The wrapper reward to expose for this step. Non-combat or non-play
-            actions keep the original ``base_reward`` unchanged.
+            The wrapper reward to expose for this step. Non-combat actions keep
+            the original ``base_reward`` unchanged.
         """
-        if previous_phase != GamePhase.COMBAT or action != int(WrapperAction.PLAY_HAND):
+        if previous_phase != GamePhase.COMBAT:
             return base_reward
 
-        passed = bool(info.get('beat_blind', False))
-        score = float(info.get('final_score', 0.0))
-        plays_remaining = max(0, hands_before_play - 1)
-        combat_reward = compute_combat_pass_reward(
-            plays_remaining=plays_remaining,
-            score=score,
-            passed=passed,
-        )
+        if action == int(WrapperAction.PLAY_HAND):
+            passed = bool(info.get('beat_blind', False))
+            score = float(info.get('final_score', 0.0))
+            plays_remaining = max(0, hands_before_play - 1)
+            combat_reward = compute_combat_pass_reward(
+                plays_remaining=plays_remaining,
+                score=score,
+                passed=passed,
+            )
 
-        info['base_reward'] = base_reward
-        info['wrapper_reward_formula'] = (
-            '2 * (plays_remaining + log10(score)) * 1_pass'
-        )
-        info['wrapper_reward_breakdown'] = {
-            'coefficient': COMBAT_PASS_REWARD_COEFFICIENT,
-            'plays_remaining': plays_remaining,
-            'score': score,
-            'pass_indicator': int(passed),
-            'combat_reward': combat_reward,
-        }
-        return combat_reward
+            info['base_reward'] = base_reward
+            info['wrapper_reward_formula'] = (
+                '2 * (plays_remaining + log10(score)) * 1_pass'
+            )
+            info['wrapper_reward_breakdown'] = {
+                'coefficient': COMBAT_PASS_REWARD_COEFFICIENT,
+                'plays_remaining': plays_remaining,
+                'score': score,
+                'pass_indicator': int(passed),
+                'combat_reward': combat_reward,
+            }
+            return combat_reward
+
+        if action == int(WrapperAction.DISCARD):
+            info['base_reward'] = base_reward
+            info['wrapper_reward_formula'] = '0.0 (discard shaping disabled)'
+            info['wrapper_reward_breakdown'] = {
+                'coefficient': 0.0,
+                'plays_remaining': None,
+                'score': None,
+                'pass_indicator': 0,
+                'combat_reward': 0.0,
+            }
+            return 0.0
+
+        return base_reward
 
     # ── Individual action handlers ────────────────────────────────────────
 

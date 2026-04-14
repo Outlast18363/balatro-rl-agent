@@ -335,6 +335,16 @@ class TestCombatReward:
         )
         assert reward == 0.0
 
+    def test_combat_pass_reward_helper_stays_finite_for_large_scores(self):
+        """Large late-game scores should still yield a finite log-scaled reward."""
+        reward = compute_combat_pass_reward(
+            plays_remaining=3,
+            score=10**15,
+            passed=True,
+        )
+        assert np.isfinite(reward)
+        assert reward == pytest.approx(36.0)
+
     def test_play_hand_reward_uses_wrapper_pass_formula(self, env):
         """Winning hands should use the wrapper's explicit pass-reward formula."""
         env.reset()
@@ -372,6 +382,21 @@ class TestCombatReward:
         assert not terminated
         assert not truncated
         assert info['wrapper_reward_breakdown']['pass_indicator'] == 0
+
+    def test_discard_reward_is_neutralized_in_wrapper(self, env):
+        """Discard actions should not inherit the base env's positive shaping."""
+        env.reset()
+        _enter_combat(env)
+        env.step(int(WrapperAction.SELECT_CARD_BASE))
+
+        obs, reward, terminated, truncated, info = env.step(int(WrapperAction.DISCARD))
+
+        assert obs['phase'] == GamePhase.COMBAT
+        assert reward == 0.0
+        assert info['base_reward'] > reward
+        assert info['wrapper_reward_breakdown']['combat_reward'] == 0.0
+        assert not terminated
+        assert not truncated
 
 
 # ─── Invalid actions ──────────────────────────────────────────────────────────
@@ -457,6 +482,18 @@ class TestFullCycle:
 
         obs, _, _, _, _ = env.step(int(WrapperAction.SHOP_END))
         assert env.observation_space.contains(obs), 'Second TRANSITION obs out of space'
+
+    def test_transition_target_score_handles_high_antes(self, env):
+        """Transition obs should preserve very large blind targets without overflow."""
+        env.reset()
+        env.env.state.ante = 50
+
+        obs = env._get_phase_observation()
+
+        assert obs['phase'] == GamePhase.TRANSITION
+        assert obs['target_score'] > np.int64(2_147_483_647)
+        assert obs['target_score'].dtype == np.int64
+        assert env.observation_space.contains(obs), 'High-ante TRANSITION obs out of space'
 
     def test_global_token_consistent(self, env):
         """Ante, round, and money should be present and reasonable in all phases."""

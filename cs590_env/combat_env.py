@@ -33,6 +33,10 @@ class PooledCombatEnv(gym.Env):
     into the underlying ``BalatroEnv`` with a fresh RNG seed so card draws
     diverge across episodes and workers.
 
+    When used under a vector env, prefer same-step autoreset so the wrapper can
+    expose the true terminal/truncation flags without burning an extra step on a
+    deferred reset observation.
+
     The action is a flat ``MultiBinary(MAX_HAND_SIZE + 1)`` array:
       * ``action[:MAX_HAND_SIZE]``  — per-card binary selection
       * ``action[MAX_HAND_SIZE]``   — execution (0 = play, 1 = discard)
@@ -98,16 +102,10 @@ class PooledCombatEnv(gym.Env):
         card_selections = action[: MAX_HAND_SIZE]
         execution = int(action[MAX_HAND_SIZE])
 
-        obs, reward, done, info = self._combat.step(card_selections, execution)
-
-        if done:
-            # Return a valid combat obs so the training loop never sees
-            # terminal (SHOP/TRANSITION) observations.  AsyncVectorEnv will
-            # also auto-reset, but for a snapshot-pool env the extra reset
-            # is harmless — it just loads another random snapshot.
-            obs, _ = self.reset()
-
-        return obs, reward, done, False, info
+        obs, reward, terminated, truncated, info = self._combat.step(
+            card_selections, execution
+        )
+        return obs, reward, terminated, truncated, info
 
     def close(self) -> None:
         self._combat.close()
