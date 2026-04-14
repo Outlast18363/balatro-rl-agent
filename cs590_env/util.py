@@ -44,6 +44,11 @@ def _enum_name(enum_cls: type[IntEnum], value: int) -> str:
         return f"UNKNOWN({int(value)})"
 
 
+def _enum_name_none_as_empty(enum_cls: type[IntEnum], value: int) -> str:
+    s = _enum_name(enum_cls, value)
+    return "" if s == "NONE" else s
+
+
 def _batch_size(obs: dict[str, Any]) -> int | None:
     """Return leading batch size ``N`` if obs is vectorized, else ``None``."""
     ph = np.asarray(obs["phase"])
@@ -91,35 +96,32 @@ def print_combat_state(
     if n is not None and (env_index < 0 or env_index >= n):
         print(f"[print_combat_state] env_index={env_index} out of range (N={n})", file=file)
 
-    phase_val = _scalar(obs, "phase", env_index)
-    phase_name = _enum_name(GamePhase, int(phase_val)) if phase_val <= 2 else str(int(phase_val))
-    if int(phase_val) != int(GamePhase.COMBAT):
-        print(
-            f"*** Note: phase is {phase_name} ({phase_val}), not COMBAT — "
-            "combat fields may be zeroed or stale. ***",
-            file=file,
-        )
+    # phase_val = _scalar(obs, "phase", env_index)
+    # phase_name = _enum_name(GamePhase, int(phase_val)) if phase_val <= 2 else str(int(phase_val))
+    # if int(phase_val) != int(GamePhase.COMBAT):
+    #     print(
+    #         f"*** Note: phase is {phase_name} ({phase_val}), not COMBAT — "
+    #         "combat fields may be zeroed or stale. ***",
+    #         file=file,
+    #     )
 
-    ante = _scalar(obs, "ante", env_index)
-    rnd = _scalar(obs, "round", env_index)
-    money = _scalar(obs, "money", env_index)
-    print("=== Run ===", file=file)
-    print(f"  ante={ante}  round={rnd}  phase={phase_name}({phase_val})  money={money}", file=file)
+    # ante = _scalar(obs, "ante", env_index)
+    # rnd = _scalar(obs, "round", env_index)
+    # hpr = _scalar(obs, "hands_played_round", env_index)
+    # print("=== Run ===", file=file)
+    # print(f"  ante={ante}  round={rnd}  phase={phase_name}({phase_val})  hands_played_round={hpr}", file=file)
 
     cur = _scalar(obs, "current_score", env_index)
     tgt = _scalar(obs, "target_score", env_index)
     print("\n=== Blind / score ===", file=file)
     print(f"  round chips: {cur} / target {tgt}  (need {max(0, int(tgt) - int(cur))} more)", file=file)
 
+    money = _scalar(obs, "money", env_index)
     hs = _scalar(obs, "hand_size", env_index)
     hr = _scalar(obs, "hands_remaining", env_index)
     dr = _scalar(obs, "discards_remaining", env_index)
-    # hpr = _scalar(obs, "hands_played_round", env_index)
     print("\n=== Resources ===", file=file)
-    print(
-        f"  hand_size={hs}  hands_left={hr}  discards_left={dr}", # hands_played_round={hpr}",
-        file=file,
-    )
+    print(f"  money={money}  hand_size={hs}  hands_left={hr}  discards_left={dr}", file=file)
 
     boss_act = _scalar(obs, "boss_is_active", env_index)
     boss_id = _scalar(obs, "boss_id", env_index)
@@ -151,9 +153,9 @@ def print_combat_state(
             {
                 "slot": str(i),
                 "card": _format_card_id(cid),
-                "enhancement": _enum_name(Enhancement, int(enh[i])),
-                "edition": _enum_name(Edition, int(ed[i])),
-                "seal": _enum_name(Seal, int(seal[i])),
+                "enhancement": _enum_name_none_as_empty(Enhancement, int(enh[i])),
+                "edition": _enum_name_none_as_empty(Edition, int(ed[i])),
+                "seal": _enum_name_none_as_empty(Seal, int(seal[i])),
                 "sel": "✅" if int(sel[i]) else "",
                 "face↓": "⬇️" if int(fd[i]) else "",
                 "debuff": "❌" if int(db[i]) else "",
@@ -226,6 +228,27 @@ def print_combat_state(
     if not shown:
         print("  (none)", file=file)
 
+    deck_ranks = _get_row(obs, "deck_ranks", env_index).astype(int).ravel()
+    deck_suits = _get_row(obs, "deck_suits", env_index).astype(int).ravel()
+    deck_ids = _get_row(obs, "deck_card_ids", env_index).astype(int).ravel()
+    n_deck_slots = int((deck_ids >= 0).sum())
+    rsum, ssum = int(deck_ranks.sum()), int(deck_suits.sum())
+    print("\n=== Draw pile (deck minus hand in combat) ===", file=file)
+    print(f"  padded deck slots used: {n_deck_slots}  rank_hist_sum={rsum}  suit_hist_sum={ssum}", file=file)
+    deck_cards_fmt = [_format_card_id(int(cid)) for cid in deck_ids if int(cid) >= 0]
+    if deck_cards_fmt:
+        print("  [" + ", ".join(deck_cards_fmt) + "]", file=file)
+    else:
+        print("  []", file=file)
+    rank_labels = [Rank(r + 2).short for r in range(NUM_RANKS)]
+    parts = [f"{lab}:{int(deck_ranks[i])}" for i, lab in enumerate(rank_labels) if deck_ranks[i]]
+    if parts:
+        print("  ranks: " + "  ".join(parts), file=file)
+    suit_syms = [Suit(s).symbol() for s in range(4)]
+    sparts = [f"{sym}:{int(deck_suits[i])}" for i, sym in enumerate(suit_syms) if deck_suits[i]]
+    if sparts:
+        print("  suits: " + "  ".join(sparts), file=file)
+
     hl = _get_row(obs, "hand_levels", env_index)
     if hl.ndim == 1 and hl.size == NUM_HAND_TYPES * 4:
         hl = hl.reshape(NUM_HAND_TYPES, 4)
@@ -235,21 +258,5 @@ def print_combat_state(
         hid, lvl, ch, mult = int(row[0]), int(row[1]), int(row[2]), int(row[3])
         name = _HAND_TYPE_NAMES[hi]
         print(f"  {name:14s}  id={hid}  lvl={lvl:3d}  chips={ch:5d}  mult={mult:3d}", file=file)
-
-    deck_ranks = _get_row(obs, "deck_ranks", env_index).astype(int).ravel()
-    deck_suits = _get_row(obs, "deck_suits", env_index).astype(int).ravel()
-    deck_ids = _get_row(obs, "deck_card_ids", env_index).astype(int).ravel()
-    n_deck_slots = int((deck_ids >= 0).sum())
-    rsum, ssum = int(deck_ranks.sum()), int(deck_suits.sum())
-    print("\n=== Draw pile (deck minus hand in combat) ===", file=file)
-    print(f"  padded deck slots used: {n_deck_slots}  rank_hist_sum={rsum}  suit_hist_sum={ssum}", file=file)
-    rank_labels = [Rank(r + 2).short for r in range(NUM_RANKS)]
-    parts = [f"{lab}:{int(deck_ranks[i])}" for i, lab in enumerate(rank_labels) if deck_ranks[i]]
-    if parts:
-        print("  ranks: " + "  ".join(parts), file=file)
-    suit_syms = [Suit(s).symbol() for s in range(4)]
-    sparts = [f"{sym}:{int(deck_suits[i])}" for i, sym in enumerate(suit_syms) if deck_suits[i]]
-    if sparts:
-        print("  suits: " + "  ".join(sparts), file=file)
 
     print("", file=file)
