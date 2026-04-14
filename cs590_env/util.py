@@ -20,14 +20,6 @@ from cs590_env.schema import (
 
 _HAND_TYPE_NAMES = [HandType(i).name for i in range(NUM_HAND_TYPES)]
 
-# Hand table: 1 → ✅, 0 → ❌ (fixed width for alignment in monospace fonts).
-_ON = "✅"
-_OFF = "❌"
-
-
-def _bool_cell(v: int) -> str:
-    return _ON if int(v) else _OFF
-
 
 def _format_card_id(card_id: int) -> str:
     """Decode 0–51 using the same mapping as ``Card.__int__``."""
@@ -145,54 +137,70 @@ def print_combat_state(
 
     print("\n=== Hand ===", file=file)
 
-    def _clip(s: str, w: int) -> str:
+    def _cell(s: str, w: int) -> str:
         if len(s) <= w:
-            return s
-        return s[: max(0, w - 1)] + "…"
+            return s.center(w)
+        return s[: max(1, w - 1)] + "…"
 
-    rows: list[tuple[int, str, str, str, str, str, str, str]] = []
+    cols: list[dict[str, str]] = []
     for i in range(min(MAX_HAND_SIZE, len(hand_ids))):
         cid = int(hand_ids[i])
         if cid < 0:
             continue
-        card = _format_card_id(cid)
-        en_s = "-" if int(enh[i]) == 0 else _enum_name(Enhancement, enh[i])
-        ed_s = "-" if int(ed[i]) == 0 else _enum_name(Edition, ed[i])
-        sl_s = "-" if int(seal[i]) == 0 else _enum_name(Seal, seal[i])
-        rows.append(
-            (
-                i,
-                card,
-                en_s,
-                ed_s,
-                sl_s,
-                _bool_cell(sel[i]),
-                _bool_cell(fd[i]),
-                _bool_cell(db[i]),
-            ),
+        cols.append(
+            {
+                "slot": str(i),
+                "card": _format_card_id(cid),
+                "enhancement": _enum_name(Enhancement, int(enh[i])),
+                "edition": _enum_name(Edition, int(ed[i])),
+                "seal": _enum_name(Seal, int(seal[i])),
+                "sel": "✅" if int(sel[i]) else "",
+                "face↓": "⬇️" if int(fd[i]) else "",
+                "debuff": "❌" if int(db[i]) else "",
+            },
         )
 
-    if not rows:
+    if not cols:
         print("  (no cards in hand slots)", file=file)
     else:
-        w_idx, w_card, w_en, w_ed, w_seal = 3, 6, 14, 12, 10
-        top = (
-            f"  {'#':>{w_idx}} │ {'card':^{w_card}} │ "
-            f"{'enhancement':^{w_en}} │ {'edition':^{w_ed}} │ {'seal':^{w_seal}} │ "
-            f"sel │ F↓ │ db"
-        )
-        rule = (
-            f"  {'─' * w_idx}─┼─{'─' * w_card}─┼─{'─' * w_en}─┼─{'─' * w_ed}─┼─{'─' * w_seal}─┼───┼───┼───"
-        )
-        print(top, file=file)
-        print(rule, file=file)
-        for i, card, en_s, ed_s, sl_s, s_cell, f_cell, d_cell in rows:
-            print(
-                f"  {i:>{w_idx}} │ {_clip(card, w_card):^{w_card}} │ "
-                f"{_clip(en_s, w_en):^{w_en}} │ {_clip(ed_s, w_ed):^{w_ed}} │ {_clip(sl_s, w_seal):^{w_seal}} │ "
-                f"{s_cell} │ {f_cell} │ {d_cell}",
-                file=file,
-            )
+        row_spec: list[tuple[str, str]] = [
+            ("slot", "slot"),
+            ("card", "card"),
+            ("enhancement", "enhancement"),
+            ("edition", "edition"),
+            ("seal", "seal"),
+            ("sel", "selected"),
+            ("face↓", "face_down"),
+            ("debuff", "debuffed"),
+        ]
+        w_label = max(len(lbl) for _, lbl in row_spec)
+        n = len(cols)
+        col_widths: list[int] = []
+        for j in range(n):
+            w = 2  # ⬇️ (U+2B07 + VS-16) etc.; keep room for single-cell markers
+            w = max(w, len(cols[j]["card"]))
+            for key, _ in row_spec:
+                w = max(w, len(cols[j][key]))
+            col_widths.append(w)
+
+        gap = " │ "
+
+        def _hline(left_w: int) -> str:
+            s = "  " + "─" * left_w + "─┼"
+            for j, cw in enumerate(col_widths):
+                s += "─" * (cw + 2)
+                if j < n - 1:
+                    s += "┼"
+            return s
+
+        # Header row: one column per card (card as column title).
+        hdr_cells = [_cell(cols[j]["card"], col_widths[j]) for j in range(n)]
+        print(f"  {' ':{w_label}}{gap}{gap.join(hdr_cells)}", file=file)
+        print(_hline(w_label), file=file)
+
+        for key, lbl in row_spec:
+            cells = [_cell(cols[j][key], col_widths[j]) for j in range(n)]
+            print(f"  {lbl:{w_label}}{gap}{gap.join(cells)}", file=file)
 
     joker_ids = _get_row(obs, "joker_ids", env_index).astype(int).ravel()
     joker_empty = _get_row(obs, "joker_is_empty", env_index).astype(int).ravel()
