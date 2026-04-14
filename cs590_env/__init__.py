@@ -44,6 +44,7 @@ from cs590_env.combat_env import (
     mask_logits,
 )
 from balatro_gym.save_injection import load_snapshot_pool
+from cs590_env.util import print_combat_state
 
 __all__ = [
     'BalatroPhaseWrapper',
@@ -62,4 +63,5 @@ __all__ = [
     'get_card_mask',
     'mask_logits',
     'load_snapshot_pool',
+    'print_combat_state',
 ]
