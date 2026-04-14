@@ -241,15 +241,29 @@ def print_combat_state(
             continue
         grid[ci % 4][ci // 4] += 1
 
-    cw = 2
-    corner_w = 2
+    # Bordered 4×13 grid: rows = suits, cols = ranks; fixed cell width for alignment.
+    inner = 3
+    ncols = 1 + NUM_RANKS
     indent = "  "
-    hdr = indent + " " * corner_w + "".join(f"{Rank(r + 2).short:^{cw}}" for r in range(NUM_RANKS))
-    print(hdr, file=file)
+
+    def _deck_slot(text: str) -> str:
+        t = (text or "")[:inner]
+        return f"{t:^{inner}}"
+
+    def _deck_rule(left: str, cross: str, right: str) -> str:
+        return indent + left + cross.join("─" * inner for _ in range(ncols)) + right
+
+    print(_deck_rule("┌", "┬", "┐"), file=file)
+    hdr_cells = [""] + [Rank(r + 2).short for r in range(NUM_RANKS)]
+    print(indent + "│" + "│".join(_deck_slot(x) for x in hdr_cells) + "│", file=file)
+    print(_deck_rule("├", "┼", "┤"), file=file)
     for s in range(4):
         sym = Suit(s).symbol()
-        cells = "".join("  " if grid[s][ri] == 0 else str(grid[s][ri]).rjust(cw) for ri in range(NUM_RANKS))
-        print(indent + f"{sym:<{corner_w}}" + cells, file=file)
+        row_cells = [_deck_slot(sym)] + [
+            _deck_slot("" if grid[s][ri] == 0 else str(grid[s][ri])) for ri in range(NUM_RANKS)
+        ]
+        print(indent + "│" + "│".join(row_cells) + "│", file=file)
+    print(_deck_rule("└", "┴", "┘"), file=file)
 
     hl = _get_row(obs, "hand_levels", env_index)
     if hl.ndim == 1 and hl.size == NUM_HAND_TYPES * 4:
