@@ -417,7 +417,7 @@ def run_weight_interpreter(
 
     Uses the same factored action space as training: ``CombatActionWrapper.step`` with
     1–5 cards selected, then play (0) or discard (1). Stops when the wrapper reports
-    ``done`` (blind cleared, run out of hands, or left combat phase).
+    episode end (``terminated or truncated``, blind cleared, out of hands, or left combat).
 
     Args:
         combat: A ``CombatActionWrapper`` instance, or a ``PooledCombatEnv`` (uses ``._combat``).
@@ -476,7 +476,8 @@ def run_weight_interpreter(
             mode = "discard" if execution else "play"
             print(f"  policy → {mode}  cards={slots}  (n={len(slots)})", file=file)
 
-        obs, reward, done, info = wrap.step(card_sel, execution)
+        obs, reward, terminated, truncated, info = wrap.step(card_sel, execution)
+        done = terminated or truncated
         step_count += 1
         total_reward += float(reward)
         last_info = dict(info) if info else {}
