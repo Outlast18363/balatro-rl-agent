@@ -20,6 +20,14 @@ from cs590_env.schema import (
 
 _HAND_TYPE_NAMES = [HandType(i).name for i in range(NUM_HAND_TYPES)]
 
+# Hand table: 1 → ✅, 0 → ❌ (fixed width for alignment in monospace fonts).
+_ON = "✅"
+_OFF = "❌"
+
+
+def _bool_cell(v: int) -> str:
+    return _ON if int(v) else _OFF
+
 
 def _format_card_id(card_id: int) -> str:
     """Decode 0–51 using the same mapping as ``Card.__int__``."""
@@ -114,10 +122,10 @@ def print_combat_state(
     hs = _scalar(obs, "hand_size", env_index)
     hr = _scalar(obs, "hands_remaining", env_index)
     dr = _scalar(obs, "discards_remaining", env_index)
-    hpr = _scalar(obs, "hands_played_round", env_index)
+    # hpr = _scalar(obs, "hands_played_round", env_index)
     print("\n=== Resources ===", file=file)
     print(
-        f"  hand_size={hs}  hands_left={hr}  discards_left={dr}  hands_played_round={hpr}",
+        f"  hand_size={hs}  hands_left={hr}  discards_left={dr}", # hands_played_round={hpr}",
         file=file,
     )
 
@@ -136,25 +144,55 @@ def print_combat_state(
     db = _get_row(obs, "hand_is_debuffed", env_index).astype(int).ravel()
 
     print("\n=== Hand ===", file=file)
-    any_card = False
+
+    def _clip(s: str, w: int) -> str:
+        if len(s) <= w:
+            return s
+        return s[: max(0, w - 1)] + "…"
+
+    rows: list[tuple[int, str, str, str, str, str, str, str]] = []
     for i in range(min(MAX_HAND_SIZE, len(hand_ids))):
         cid = int(hand_ids[i])
         if cid < 0:
             continue
-        any_card = True
-        bits = [_format_card_id(cid)]
-        if int(enh[i]) != 0:
-            bits.append(f"enh={_enum_name(Enhancement, enh[i])}")
-        if int(ed[i]) != 0:
-            bits.append(f"ed={_enum_name(Edition, ed[i])}")
-        if int(seal[i]) != 0:
-            bits.append(f"seal={_enum_name(Seal, seal[i])}")
-        bits.append(f"sel={int(sel[i])}")
-        bits.append(f"face_down={int(fd[i])}")
-        bits.append(f"debuff={int(db[i])}")
-        print(f"  [{i:2d}]  {'  '.join(bits)}", file=file)
-    if not any_card:
+        card = _format_card_id(cid)
+        en_s = "-" if int(enh[i]) == 0 else _enum_name(Enhancement, enh[i])
+        ed_s = "-" if int(ed[i]) == 0 else _enum_name(Edition, ed[i])
+        sl_s = "-" if int(seal[i]) == 0 else _enum_name(Seal, seal[i])
+        rows.append(
+            (
+                i,
+                card,
+                en_s,
+                ed_s,
+                sl_s,
+                _bool_cell(sel[i]),
+                _bool_cell(fd[i]),
+                _bool_cell(db[i]),
+            ),
+        )
+
+    if not rows:
         print("  (no cards in hand slots)", file=file)
+    else:
+        w_idx, w_card, w_en, w_ed, w_seal = 3, 6, 14, 12, 10
+        top = (
+            f"  {'#':>{w_idx}} │ {'card':^{w_card}} │ "
+            f"{'enhancement':^{w_en}} │ {'edition':^{w_ed}} │ {'seal':^{w_seal}} │ "
+            f"sel │ F↓ │ db"
+        )
+        rule = (
+            f"  {'─' * w_idx}─┼─{'─' * w_card}─┼─{'─' * w_en}─┼─{'─' * w_ed}─┼─{'─' * w_seal}─┼───┼───┼───"
+        )
+        print(top, file=file)
+        print(rule, file=file)
+        for i, card, en_s, ed_s, sl_s, s_cell, f_cell, d_cell in rows:
+            print(
+                f"  {i:>{w_idx}} │ {_clip(card, w_card):^{w_card}} │ "
+                f"{_clip(en_s, w_en):^{w_en}} │ {_clip(ed_s, w_ed):^{w_ed}} │ {_clip(sl_s, w_seal):^{w_seal}} │ "
+                f"{s_cell} │ {f_cell} │ {d_cell}",
+                file=file,
+            )
 
     joker_ids = _get_row(obs, "joker_ids", env_index).astype(int).ravel()
     joker_empty = _get_row(obs, "joker_is_empty", env_index).astype(int).ravel()
